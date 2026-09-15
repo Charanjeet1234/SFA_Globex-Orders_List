@@ -1,4 +1,5 @@
 import { productionStore } from '../lib/postgres-store.js';
+import { handleAuthProxyRequest } from '@neondatabase/auth/server';
 
 async function readBody(request) {
   if (request.body && typeof request.body === 'object' && !Buffer.isBuffer(request.body)) {
@@ -20,6 +21,45 @@ function send(response, status, value) {
   response.status(status).json(value);
 }
 
+function appendCookies(response, upstream) {
+  const cookies = upstream.headers.getSetCookie?.() || [];
+  if (cookies.length) response.setHeader('Set-Cookie', cookies);
+}
+
+async function requireAuthenticatedUser(request, response) {
+  if (!process.env.NEON_AUTH_BASE_URL || !process.env.NEON_AUTH_COOKIE_SECRET) {
+    send(response, 503, { error: 'Authentication is not configured for this deployment.' });
+    return null;
+  }
+
+  const protocol = request.headers['x-forwarded-proto'] || 'https';
+  const host = request.headers.host || 'localhost';
+  const sessionRequest = new Request(new URL('/api/auth/get-session', `${protocol}://${host}`), {
+    method: 'GET',
+    headers: {
+      cookie: request.headers.cookie || '',
+      origin: `${protocol}://${host}`,
+    },
+  });
+  const sessionResponse = await handleAuthProxyRequest({
+    request: sessionRequest,
+    path: 'get-session',
+    baseUrl: process.env.NEON_AUTH_BASE_URL,
+    cookieSecret: process.env.NEON_AUTH_COOKIE_SECRET,
+    sessionDataTtl: 60,
+    sameSite: 'lax',
+  });
+  appendCookies(response, sessionResponse);
+
+  if (!sessionResponse.ok) {
+    send(response, 401, { error: 'Authentication is required to access the order database.' });
+    return null;
+  }
+
+  const session = await sessionResponse.json();
+  return session?.user || session?.data?.user || null;
+}
+
 export default async function handler(request, response) {
   if (!process.env.DATABASE_URL) {
     send(response, 503, {
@@ -33,6 +73,11 @@ export default async function handler(request, response) {
   const [resource, id, action] = path;
 
   try {
+    const user = await requireAuthenticatedUser(request, response);
+    if (!user) {
+      return;
+    }
+
     if (request.method === 'GET' && resource === 'state' && !id) {
       send(response, 200, await productionStore.getState());
       return;

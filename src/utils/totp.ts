@@ -4,8 +4,6 @@
  * Authy, 1Password, and Apple Passwords.
  */
 
-export const SFA_MASTER_PASSWORD = 'sfaglobex2017';
-export const SFA_TOTP_SECRET = 'SFAGLOBEXDUBAI27'; // 16-character RFC 4648 Base32 Secret Key
 export const SFA_ISSUER = 'SFA Globex FZCO';
 
 /**
@@ -48,7 +46,7 @@ function getCounterBuffer(timeSeconds: number, step = 30): ArrayBuffer {
  * Generates 6-digit TOTP code using Web Crypto API HMAC-SHA1
  */
 export async function generateTOTP(
-  secretBase32: string = SFA_TOTP_SECRET,
+  secretBase32: string,
   timestampMs: number = Date.now()
 ): Promise<string> {
   const timeSeconds = Math.floor(timestampMs / 1000);
@@ -83,7 +81,7 @@ export async function generateTOTP(
  */
 export async function verifyTOTP(
   inputCode: string,
-  secretBase32: string = SFA_TOTP_SECRET
+  secretBase32: string
 ): Promise<boolean> {
   const cleanCode = inputCode.trim().replace(/\s+/g, '');
   if (cleanCode.length !== 6) return false;
@@ -125,7 +123,7 @@ export function getTOTPCountdown(): number {
  */
 export function getTOTPUri(
   username: string = 'admin',
-  secretBase32: string = SFA_TOTP_SECRET,
+  secretBase32: string,
   issuer: string = SFA_ISSUER
 ): string {
   const label = encodeURIComponent(`${issuer}:${username}@sfaglobex.ae`);

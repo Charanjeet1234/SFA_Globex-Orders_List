@@ -23,9 +23,8 @@ import {
 import { 
   AlertsDrawer 
 } from './components/AlertsDrawer';
-import { 
-  AuthModal 
-} from './components/AuthModal';
+import { AuthView } from '@neondatabase/auth-ui';
+import { LockKeyhole, ShieldCheck } from 'lucide-react';
 import { 
   AmendOrderModal 
 } from './components/AmendOrderModal';
@@ -57,6 +56,7 @@ import {
   generateSecureAuditHash 
 } from './utils/encryption';
 import { databaseApi, DatabaseState } from './api';
+import { authClient } from './auth';
 
 const LEGACY_STORAGE_KEY_ORDERS = 'sfa_globex_orders_v2';
 const LEGACY_STORAGE_KEY_COMPANIES = 'sfa_globex_companies_v2';
@@ -79,26 +79,6 @@ function readLegacyCollection<T>(key: string, fallback: T[]): T[] {
   }
 }
 
-function readStoredSession(): StoredSession | null {
-  try {
-    const saved = localStorage.getItem(SESSION_STORAGE_KEY);
-    const session = saved ? JSON.parse(saved) : null;
-    if (
-      !session ||
-      typeof session.userId !== 'string' ||
-      typeof session.expiresAt !== 'number' ||
-      session.expiresAt <= Date.now()
-    ) {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
-      return null;
-    }
-    return session;
-  } catch {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
-    return null;
-  }
-}
-
 function saveSession(userId: string): StoredSession {
   const session = {
     userId,
@@ -109,21 +89,16 @@ function saveSession(userId: string): StoredSession {
 }
 
 export default function App() {
+  const { data: neonSession, isPending: isAuthLoading } = authClient.useSession();
   const [orders, setOrders] = useState<Order[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isDatabaseReady, setIsDatabaseReady] = useState(false);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
 
-  const [restoredSession] = useState(() => readStoredSession());
   const [alerts, setAlerts] = useState<AlertNotification[]>(INITIAL_ALERTS);
-  const [currentUser, setCurrentUser] = useState<UserProfile>(
-    () => INITIAL_USERS.find((user) => user.id === restoredSession?.userId) || INITIAL_USERS[0],
-  );
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
-    () => Boolean(restoredSession && INITIAL_USERS.some((user) => user.id === restoredSession.userId)),
-  );
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(INITIAL_USERS[0]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Search & Year Filters
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -148,7 +123,35 @@ export default function App() {
   };
 
   useEffect(() => {
+    if (isAuthLoading) return;
+
+    const authUser = neonSession?.user;
+    if (!authUser) {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      setIsAuthenticated(false);
+      return;
+    }
+
+    const existingUser = INITIAL_USERS.find((user) => user.email === authUser.email);
+    setCurrentUser(existingUser || {
+      id: authUser.id,
+      username: authUser.email?.split('@')[0] || 'user',
+      name: authUser.name || authUser.email || 'SFA Globex User',
+      email: authUser.email || '',
+      role: 'auditor',
+      roleTitle: 'Authenticated Portal User',
+      mfaEnabled: false,
+      mfaVerified: true,
+      lastLogin: new Date().toISOString(),
+    });
+    saveSession(authUser.id);
+    setIsAuthenticated(true);
+  }, [isAuthLoading, neonSession]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
     let isCurrent = true;
+    setIsDatabaseReady(false);
 
     const loadDatabase = async () => {
       try {
@@ -181,7 +184,7 @@ export default function App() {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -191,7 +194,7 @@ export default function App() {
     const endSession = () => {
       localStorage.removeItem(SESSION_STORAGE_KEY);
       setIsAuthenticated(false);
-      setIsAuthModalOpen(false);
+      void authClient.signOut();
     };
 
     const scheduleLogout = (expiresAt: number) => {
@@ -530,19 +533,57 @@ export default function App() {
   };
 
   // Handle successful authentication
-  const handleLoginSuccess = (user: UserProfile) => {
-    saveSession(user.id);
-    setCurrentUser(user);
-    setIsAuthenticated(true);
-    setIsAuthModalOpen(false);
-    logAudit('LOGIN_MFA', user.id, 'AUTH', `User ${user.name} (${user.role}) authenticated with password & Google Authenticator 2FA.`);
-  };
-
   const handleLockSession = () => {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     setIsAuthenticated(false);
-    setIsAuthModalOpen(false);
+    void authClient.signOut();
   };
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans">
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 mx-auto rounded-xl border-2 border-blue-400 border-t-transparent animate-spin" />
+          <p className="text-sm font-bold">Checking your secure session…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="sfa-auth-ui min-h-screen overflow-y-auto bg-slate-950 px-3 py-8 text-slate-100 selection:bg-blue-600 selection:text-white sm:flex sm:items-center sm:justify-center sm:p-6">
+        <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900 shadow-2xl shadow-blue-950/40">
+          <div className="border-b border-slate-700/80 bg-gradient-to-r from-slate-950 via-blue-950 to-slate-950 px-6 py-7 text-center">
+            <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 shadow-lg shadow-blue-500/30 ring-2 ring-white/20">
+              <LockKeyhole className="h-6 w-6 text-white" aria-hidden="true" />
+            </div>
+            <div className="mb-2 flex items-center justify-center gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5 text-blue-300" aria-hidden="true" />
+              <span className="rounded-full border border-blue-400/30 bg-blue-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-200">
+                SFA Globex · Secure Portal
+              </span>
+            </div>
+            <h1 className="text-xl font-black tracking-tight text-white">SFA Globex Security Gateway</h1>
+            <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-slate-400">
+              Authorized Ferro Alloys &amp; Metals Trade Operations
+            </p>
+          </div>
+
+          <div className="px-5 py-6 sm:px-6">
+            <p className="mb-5 text-center text-xs leading-relaxed text-slate-400">
+              Use your email address as your username. Create an account, sign in with a password, use Google, or reset a forgotten password.
+            </p>
+            <AuthView pathname={window.location.pathname} className="mx-auto max-w-none border-0 bg-transparent p-0 shadow-none" />
+          </div>
+
+          <div className="border-t border-slate-800 bg-slate-950/40 px-6 py-3 text-center text-[10px] font-medium tracking-wide text-slate-500">
+            Encrypted session · Automatically signs out after 1 minute of inactivity
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isDatabaseReady) {
     return (
@@ -551,20 +592,6 @@ export default function App() {
           <div className="w-10 h-10 mx-auto rounded-xl border-2 border-blue-400 border-t-transparent animate-spin" />
           <p className="text-sm font-bold">Loading the secure order database…</p>
         </div>
-      </div>
-    );
-  }
-
-  // Mandatory Authentication Gate: Always prompt for password and 2FA on open
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 selection:bg-blue-600 selection:text-white font-sans">
-        <AuthModal
-          isOpen={true}
-          isMandatory={true}
-          onLoginSuccess={handleLoginSuccess}
-          availableUsers={INITIAL_USERS}
-        />
       </div>
     );
   }
@@ -663,10 +690,10 @@ export default function App() {
             </button>
             <span className="text-slate-700">•</span>
             <button
-              onClick={() => setIsAuthModalOpen(true)}
+              onClick={handleLockSession}
               className="hover:text-blue-400 transition"
             >
-              MFA Security Gateway
+              Sign out
             </button>
           </div>
         </div>
@@ -744,14 +771,6 @@ export default function App() {
           setAlerts(prev => prev.map(a => a.id === id ? { ...a, isRead: true } : a));
         }}
         onSendDunningReminder={handleSendReminder}
-      />
-
-      {/* 8. Multi-Factor Authentication Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        onLoginSuccess={handleLoginSuccess}
-        availableUsers={INITIAL_USERS}
       />
 
     </div>
