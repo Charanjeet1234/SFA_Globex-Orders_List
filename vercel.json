@@ -10,6 +10,10 @@
       "destination": "/api/auth/[...path]"
     },
     {
+      "source": "/api/:path*",
+      "destination": "/api/[...path]"
+    },
+    {
       "source": "/auth/:path*",
       "destination": "/index.html"
     }

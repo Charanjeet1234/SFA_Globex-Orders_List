@@ -22,6 +22,15 @@ async function readBody(request) {
   return body ? JSON.parse(body) : {};
 }
 
+function apiPathFrom(request) {
+  const capturedPath = request.query?.path;
+  if (Array.isArray(capturedPath)) return capturedPath.join('/');
+  if (typeof capturedPath === 'string' && capturedPath) return capturedPath;
+
+  const url = new URL(request.url, `https://${request.headers.host || 'localhost'}`);
+  return url.pathname.replace(/^\/api\/?/, '');
+}
+
 function send(response, status, value) {
   response.setHeader('Cache-Control', 'no-store');
   response.status(status).json(value);
@@ -118,8 +127,7 @@ async function requireAuthenticatedUser(request, response) {
 }
 
 export default async function handler(request, response) {
-  const url = new URL(request.url, `https://${request.headers.host || 'localhost'}`);
-  const path = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
+  const path = apiPathFrom(request).split('/').filter(Boolean);
   const [resource, id, action] = path;
 
   try {
