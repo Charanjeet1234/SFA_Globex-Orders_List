@@ -56,39 +56,28 @@ import {
 import { 
   generateSecureAuditHash 
 } from './utils/encryption';
+import { databaseApi, DatabaseState } from './api';
 
-const STORAGE_KEY_ORDERS = 'sfa_globex_orders_v2';
-const STORAGE_KEY_COMPANIES = 'sfa_globex_companies_v2';
-const STORAGE_KEY_LOGS = 'sfa_globex_audit_logs_v2';
+const LEGACY_STORAGE_KEY_ORDERS = 'sfa_globex_orders_v2';
+const LEGACY_STORAGE_KEY_COMPANIES = 'sfa_globex_companies_v2';
+const LEGACY_STORAGE_KEY_LOGS = 'sfa_globex_audit_logs_v2';
+
+function readLegacyCollection<T>(key: string, fallback: T[]): T[] {
+  try {
+    const saved = localStorage.getItem(key);
+    const parsed = saved ? JSON.parse(saved) : null;
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export default function App() {
-  // State initialization with localStorage fallback
-  const [orders, setOrders] = useState<Order[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_ORDERS);
-      return saved ? JSON.parse(saved) : INITIAL_ORDERS;
-    } catch {
-      return INITIAL_ORDERS;
-    }
-  });
-
-  const [companies, setCompanies] = useState<Company[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_COMPANIES);
-      return saved ? JSON.parse(saved) : INITIAL_COMPANIES;
-    } catch {
-      return INITIAL_COMPANIES;
-    }
-  });
-
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_LOGS);
-      return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
-    } catch {
-      return INITIAL_AUDIT_LOGS;
-    }
-  });
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [isDatabaseReady, setIsDatabaseReady] = useState(false);
+  const [databaseError, setDatabaseError] = useState<string | null>(null);
 
   const [alerts, setAlerts] = useState<AlertNotification[]>(INITIAL_ALERTS);
   const [currentUser, setCurrentUser] = useState<UserProfile>(INITIAL_USERS[0]);
@@ -111,30 +100,47 @@ export default function App() {
   const [orderToAmend, setOrderToAmend] = useState<Order | null>(null);
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
 
-  // Sync to local storage
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
-    } catch (e) {
-      console.error('Storage write error', e);
-    }
-  }, [orders]);
+  const applyDatabaseState = (state: DatabaseState) => {
+    setOrders(state.orders);
+    setCompanies(state.companies);
+    setAuditLogs(state.auditLogs);
+  };
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_COMPANIES, JSON.stringify(companies));
-    } catch (e) {
-      console.error('Storage write error', e);
-    }
-  }, [companies]);
+    let isCurrent = true;
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_LOGS, JSON.stringify(auditLogs));
-    } catch (e) {
-      console.error('Storage write error', e);
-    }
-  }, [auditLogs]);
+    const loadDatabase = async () => {
+      try {
+        let state = await databaseApi.getState();
+        if (!state.initialized) {
+          state = await databaseApi.initialize({
+            // Import any data saved by the prior browser-only version once.
+            // All subsequent reads and writes use SQLite through the local API.
+            orders: readLegacyCollection(LEGACY_STORAGE_KEY_ORDERS, INITIAL_ORDERS),
+            companies: readLegacyCollection(LEGACY_STORAGE_KEY_COMPANIES, INITIAL_COMPANIES),
+            auditLogs: readLegacyCollection(LEGACY_STORAGE_KEY_LOGS, INITIAL_AUDIT_LOGS),
+          });
+        }
+        if (isCurrent) {
+          applyDatabaseState(state);
+        }
+      } catch (error) {
+        console.error('Database load error', error);
+        if (isCurrent) {
+          setDatabaseError(error instanceof Error ? error.message : 'Unable to load the order database.');
+        }
+      } finally {
+        if (isCurrent) {
+          setIsDatabaseReady(true);
+        }
+      }
+    };
+
+    void loadDatabase();
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   // Helper to append secure audit log
   const logAudit = async (
@@ -158,7 +164,13 @@ export default function App() {
       ipAddress: '194.170.21.84 (Corporate VPN Dubai - JLT)',
       securityHash: `sha256:${hash.slice(0, 32)}`,
     };
-    setAuditLogs(prev => [newLog, ...prev]);
+    try {
+      await databaseApi.createAuditLog(newLog);
+      setAuditLogs(prev => [newLog, ...prev]);
+    } catch (error) {
+      console.error('Audit log write error', error);
+      setDatabaseError(error instanceof Error ? error.message : 'Unable to save the audit log.');
+    }
   };
 
   // Switch role handler
@@ -172,21 +184,18 @@ export default function App() {
   };
 
   // Add new order
-  const handleSaveOrder = (newOrder: Order) => {
-    setOrders(prev => [newOrder, ...prev]);
-    // update company order count
-    setCompanies(prev => prev.map(c => {
-      if (c.id === newOrder.companyId) {
-        return {
-          ...c,
-          totalOrdersCount: c.totalOrdersCount + 1,
-          totalOrderVolumeUSD: c.totalOrderVolumeUSD + newOrder.totalAmountUSD,
-        };
-      }
-      return c;
-    }));
+  const handleSaveOrder = async (newOrder: Order) => {
+    try {
+      const state = await databaseApi.createOrder(newOrder);
+      setOrders(state.orders);
+      setCompanies(state.companies);
+      setDatabaseError(null);
+    } catch (error) {
+      setDatabaseError(error instanceof Error ? error.message : 'Unable to save the order.');
+      return;
+    }
 
-    logAudit(
+    void logAudit(
       'CREATE_ORDER', 
       newOrder.orderNumber, 
       'ORDER', 
@@ -195,13 +204,21 @@ export default function App() {
   };
 
   // Update order (e.g. stage transition or payment balance update)
-  const handleUpdateOrder = (updated: Order) => {
-    setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
+  const handleUpdateOrder = async (updated: Order) => {
+    try {
+      const state = await databaseApi.updateOrder(updated);
+      setOrders(state.orders);
+      setCompanies(state.companies);
+      setDatabaseError(null);
+    } catch (error) {
+      setDatabaseError(error instanceof Error ? error.message : 'Unable to update the order.');
+      return;
+    }
     if (selectedOrderDetail && selectedOrderDetail.id === updated.id) {
       setSelectedOrderDetail(updated);
     }
 
-    logAudit(
+    void logAudit(
       'UPDATE_STAGE',
       updated.orderNumber,
       'STAGE',
@@ -210,13 +227,21 @@ export default function App() {
   };
 
   // Amend existing order (Full update of products, rates, quantities, PI status)
-  const handleAmendOrder = (amendedOrder: Order) => {
-    setOrders(prev => prev.map(o => o.id === amendedOrder.id ? amendedOrder : o));
+  const handleAmendOrder = async (amendedOrder: Order) => {
+    try {
+      const state = await databaseApi.updateOrder(amendedOrder);
+      setOrders(state.orders);
+      setCompanies(state.companies);
+      setDatabaseError(null);
+    } catch (error) {
+      setDatabaseError(error instanceof Error ? error.message : 'Unable to amend the order.');
+      return;
+    }
     if (selectedOrderDetail && selectedOrderDetail.id === amendedOrder.id) {
       setSelectedOrderDetail(amendedOrder);
     }
 
-    logAudit(
+    void logAudit(
       'AMEND_ORDER',
       amendedOrder.orderNumber,
       'ORDER',
@@ -227,26 +252,23 @@ export default function App() {
   };
 
   // Delete order permanently
-  const handleDeleteOrder = (orderId: string) => {
+  const handleDeleteOrder = async (orderId: string) => {
     const found = orders.find(o => o.id === orderId);
-    setOrders(prev => prev.filter(o => o.id !== orderId));
+    try {
+      const state = await databaseApi.deleteOrder(orderId);
+      setOrders(state.orders);
+      setCompanies(state.companies);
+      setDatabaseError(null);
+    } catch (error) {
+      setDatabaseError(error instanceof Error ? error.message : 'Unable to delete the order.');
+      return;
+    }
     if (selectedOrderDetail && selectedOrderDetail.id === orderId) {
       setSelectedOrderDetail(null);
     }
 
     if (found) {
-      setCompanies(prev => prev.map(c => {
-        if (c.id === found.companyId) {
-          return {
-            ...c,
-            totalOrdersCount: Math.max(0, c.totalOrdersCount - 1),
-            totalOrderVolumeUSD: Math.max(0, c.totalOrderVolumeUSD - found.totalAmountUSD),
-          };
-        }
-        return c;
-      }));
-
-      logAudit(
+      void logAudit(
         'DELETE_ORDER',
         found.orderNumber,
         'ORDER',
@@ -258,9 +280,17 @@ export default function App() {
   };
 
   // Load sample SFA Globex order
-  const handleLoadSampleOrder = () => {
-    setOrders([SFA_SAMPLE_ORDER]);
-    logAudit(
+  const handleLoadSampleOrder = async () => {
+    try {
+      const state = await databaseApi.createOrder(SFA_SAMPLE_ORDER);
+      setOrders(state.orders);
+      setCompanies(state.companies);
+      setDatabaseError(null);
+    } catch (error) {
+      setDatabaseError(error instanceof Error ? error.message : 'Unable to load the sample order.');
+      return;
+    }
+    void logAudit(
       'CREATE_ORDER',
       SFA_SAMPLE_ORDER.orderNumber,
       'ORDER',
@@ -332,9 +362,16 @@ export default function App() {
   };
 
   // Add new company
-  const handleAddCompany = (newCompany: Company) => {
-    setCompanies(prev => [...prev, newCompany]);
-    logAudit(
+  const handleAddCompany = async (newCompany: Company) => {
+    try {
+      const state = await databaseApi.createCompany(newCompany);
+      setCompanies(state.companies);
+      setDatabaseError(null);
+    } catch (error) {
+      setDatabaseError(error instanceof Error ? error.message : 'Unable to save the company.');
+      return;
+    }
+    void logAudit(
       'CREATE_ORDER',
       newCompany.id,
       'ORDER',
@@ -343,10 +380,17 @@ export default function App() {
   };
 
   // Delete company
-  const handleDeleteCompany = (companyId: string) => {
+  const handleDeleteCompany = async (companyId: string) => {
     const comp = companies.find(c => c.id === companyId);
-    setCompanies(prev => prev.filter(c => c.id !== companyId));
-    logAudit(
+    try {
+      const state = await databaseApi.deleteCompany(companyId);
+      setCompanies(state.companies);
+      setDatabaseError(null);
+    } catch (error) {
+      setDatabaseError(error instanceof Error ? error.message : 'Unable to delete the company.');
+      return;
+    }
+    void logAudit(
       'DELETE_ORDER',
       companyId,
       'ORDER',
@@ -355,10 +399,20 @@ export default function App() {
   };
 
   // Restore backup
-  const handleRestoreBackup = (data: { orders: Order[]; companies: Company[] }) => {
-    if (data.orders) setOrders(data.orders);
-    if (data.companies) setCompanies(data.companies);
-    logAudit(
+  const handleRestoreBackup = async (data: { orders: Order[]; companies: Company[] }) => {
+    try {
+      const state = await databaseApi.replaceState({
+        orders: data.orders,
+        companies: data.companies,
+        auditLogs,
+      });
+      applyDatabaseState(state);
+      setDatabaseError(null);
+    } catch (error) {
+      setDatabaseError(error instanceof Error ? error.message : 'Unable to restore the backup.');
+      return;
+    }
+    void logAudit(
       'RESTORE_BACKUP',
       'system-database',
       'SECURITY',
@@ -406,6 +460,17 @@ export default function App() {
     logAudit('LOGIN_MFA', user.id, 'AUTH', `User ${user.name} (${user.role}) authenticated with password & Google Authenticator 2FA.`);
   };
 
+  if (!isDatabaseReady) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans">
+        <div className="text-center space-y-3">
+          <div className="w-10 h-10 mx-auto rounded-xl border-2 border-blue-400 border-t-transparent animate-spin" />
+          <p className="text-sm font-bold">Loading the secure order database…</p>
+        </div>
+      </div>
+    );
+  }
+
   // Mandatory Authentication Gate: Always prompt for password and 2FA on open
   if (!isAuthenticated) {
     return (
@@ -444,6 +509,12 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        {databaseError && (
+          <div role="alert" className="mb-5 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <strong>Database sync issue:</strong> {databaseError}. Your change was not saved; please try again.
+          </div>
+        )}
         
         {activeTab === 'analytics' ? (
           <ExecutiveDashboard
