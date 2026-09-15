@@ -141,6 +141,10 @@ export const AedRateSelector: React.FC<AedRateSelectorProps> = ({
           </div>
         )}
       </div>
+
+      <div className="text-[10px] text-slate-400 font-normal">
+        AED values round to nearest integer: ≥ 0.5 rounds up (e.g. $1,175 × 3.6745 = 4,317.5375 → 4,318 AED; .2375 → 4,317 AED).
+      </div>
     </div>
   );
 };

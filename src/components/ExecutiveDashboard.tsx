@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Order, Company, AlertNotification, ORDER_STAGES } from '../types';
 import { formatUSD, formatAED, generateExecutiveSummaryPDF } from '../utils/pdfGenerator';
+import { ExecutiveCharts } from './ExecutiveCharts';
 
 interface ExecutiveDashboardProps {
   orders: Order[];
@@ -315,6 +316,13 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
         </div>
 
       </div>
+
+      {/* Visual Graphical Presentation & Interactive Analytics */}
+      <ExecutiveCharts
+        orders={orders}
+        companies={companies}
+        selectedCurrency={selectedCurrency}
+      />
 
       {/* Section 1: Summary Section for Total Monthly Revenue Projections */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">

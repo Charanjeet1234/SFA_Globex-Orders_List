@@ -64,7 +64,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
   // Export Encrypted Backup
   const handleExportBackup = async () => {
     const backupData = {
-      system: 'NexusInsight Enterprise Trade System',
+      system: 'SFA Globex FZCO Trade System',
       version: '2026.4.1',
       exportedAt: new Date().toISOString(),
       ordersCount: orders.length,
@@ -80,7 +80,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `NexusInsight_Encrypted_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `SFAGlobex_Encrypted_Backup_${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -106,7 +106,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
           onRestoreBackup({ orders: parsed.orders, companies: parsed.companies || companies });
           setBackupMessage('Backup restored successfully! All orders and financial records synced.');
         } else {
-          setBackupMessage('Valid NexusInsight backup verified and loaded.');
+          setBackupMessage('Valid SFA Globex backup verified and loaded.');
         }
       } catch (err) {
         setBackupMessage('Error: Unable to parse backup payload. Invalid file format.');
@@ -193,7 +193,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
                   </span>
                 </div>
                 <p className="text-slate-400 leading-relaxed">
-                  NexusInsight enforces zero-knowledge client-side encryption. All multi-currency trade receivables, advance payments, balance formulas, and buyer TRN records are encrypted using AES-GCM 256-bit authenticated cipher before persistence.
+                  SFA Globex FZCO enforces zero-knowledge client-side encryption. All multi-currency trade receivables, advance payments, balance formulas, and buyer TRN records are encrypted using AES-GCM 256-bit authenticated cipher before persistence.
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 font-mono text-[11px]">
@@ -327,7 +327,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
                     <span>Restore Enterprise Database</span>
                   </div>
                   <p className="text-slate-500">
-                    Restore contracts and financial records from an official NexusInsight encrypted backup file.
+                    Restore contracts and financial records from an official SFA Globex encrypted backup file.
                   </p>
                   <label className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-sm cursor-pointer">
                     <Upload className="w-4 h-4" />
@@ -356,7 +356,7 @@ export const SecurityAuditModal: React.FC<SecurityAuditModalProps> = ({
 
         {/* Footer */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-          <span>NexusInsight Enterprise Core v2026</span>
+          <span>SFA Globex FZCO Trade Operations Core</span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg bg-slate-900 text-white font-semibold hover:bg-slate-800"

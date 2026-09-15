@@ -182,10 +182,14 @@ export function createSampleSfaOrder(): Order {
   const rate = 3.6725;
   const qty = 500; // 500 MT Silico Manganese
   const unitPriceUSD = 980;
-  const totalAmountUSD = qty * unitPriceUSD; // $490,000
+  const unitPriceAED = Math.round(unitPriceUSD * rate);
+  const totalAmountUSD = qty * unitPriceUSD; // quantity * USD price
+  const totalAmountAED = qty * unitPriceAED; // quantity * AED price
   const advancePercent = 0.20; // 20%
-  const advanceUSD = totalAmountUSD * advancePercent; // $98,000
-  const balanceUSD = totalAmountUSD - advanceUSD; // $392,000
+  const advanceUSD = Math.round(totalAmountUSD * advancePercent);
+  const advanceAED = Math.round(advanceUSD * rate);
+  const balanceUSD = totalAmountUSD - advanceUSD;
+  const balanceAED = totalAmountAED - advanceAED;
 
   return {
     id: 'sfa-2026-001',
@@ -198,13 +202,13 @@ export function createSampleSfaOrder(): Order {
     unit: 'MT',
     exchangeRateUsdToAed: rate,
     unitPriceUSD,
-    unitPriceAED: Math.round(unitPriceUSD * rate * 100) / 100,
+    unitPriceAED,
     totalAmountUSD,
-    totalAmountAED: Math.round(totalAmountUSD * rate * 100) / 100,
+    totalAmountAED,
     advancePaymentUSD: advanceUSD,
-    advancePaymentAED: Math.round(advanceUSD * rate * 100) / 100,
+    advancePaymentAED: advanceAED,
     balancePaymentUSD: balanceUSD,
-    balancePaymentAED: Math.round(balanceUSD * rate * 100) / 100,
+    balancePaymentAED: balanceAED,
     currentStage: 'pi_issued',
     isWaitingForBuyerPI: true, // "Only PI issued from company and waiting for PI to be signed from buyer"
     stagesHistory: {

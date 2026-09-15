@@ -1,5 +1,5 @@
 /**
- * End-to-End Encryption & Security Integrity Module for NexusInsight
+ * End-to-End Encryption & Security Integrity Module for SFA Globex FZCO
  * Uses standard WebCrypto API (AES-256-GCM and SHA-256)
  */
 
@@ -12,7 +12,7 @@ export interface EncryptedPayload {
   timestamp: string;
 }
 
-const DEFAULT_SECRET_PASSPHRASE = 'NexusInsight-Enterprise-E2EE-Master-Key-2026';
+const DEFAULT_SECRET_PASSPHRASE = 'SFAGlobex-FZCO-Enterprise-E2EE-Master-Key-2017';
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);

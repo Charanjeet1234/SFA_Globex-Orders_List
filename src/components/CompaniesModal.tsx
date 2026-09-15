@@ -9,7 +9,9 @@ import {
   Phone, 
   FileText, 
   DollarSign,
-  Briefcase
+  Briefcase,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { Company, Order } from '../types';
 import { formatUSD, formatAED } from '../utils/pdfGenerator';
@@ -20,6 +22,7 @@ interface CompaniesModalProps {
   companies: Company[];
   orders: Order[];
   onAddCompany: (company: Company) => void;
+  onDeleteCompany?: (companyId: string) => void;
 }
 
 export const CompaniesModal: React.FC<CompaniesModalProps> = ({
@@ -28,8 +31,10 @@ export const CompaniesModal: React.FC<CompaniesModalProps> = ({
   companies,
   orders,
   onAddCompany,
+  onDeleteCompany,
 }) => {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [companyToDelete, setCompanyToDelete] = useState<Company | null>(null);
   const [name, setName] = useState('');
   const [country, setCountry] = useState('United Arab Emirates');
   const [contactPerson, setContactPerson] = useState('');
@@ -264,10 +269,20 @@ export const CompaniesModal: React.FC<CompaniesModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="text-right">
+                    <div className="flex items-center gap-2">
                       <span className="px-2.5 py-1 rounded-full text-xs font-extrabold bg-sky-50 text-sky-800">
                         {companyOrders.length} Orders
                       </span>
+                      {onDeleteCompany && (
+                        <button
+                          type="button"
+                          onClick={() => setCompanyToDelete(company)}
+                          title="Delete Company"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -308,6 +323,52 @@ export const CompaniesModal: React.FC<CompaniesModalProps> = ({
         </div>
 
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {companyToDelete && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
+            <div className="flex items-center gap-3 text-rose-600 mb-3">
+              <div className="p-2.5 bg-rose-50 rounded-xl">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-extrabold text-slate-900">Delete Buyer Company?</h3>
+            </div>
+            
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to delete <span className="font-bold text-slate-900">{companyToDelete.name}</span> from the directory?
+            </p>
+
+            {orders.filter(o => o.companyId === companyToDelete.id).length > 0 && (
+              <div className="mt-3 p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800">
+                Notice: This company has <span className="font-bold">{orders.filter(o => o.companyId === companyToDelete.id).length} associated trade order(s)</span>. Existing trade orders will retain the company name for auditing purposes.
+              </div>
+            )}
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCompanyToDelete(null)}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteCompany) {
+                    onDeleteCompany(companyToDelete.id);
+                  }
+                  setCompanyToDelete(null);
+                }}
+                className="px-4 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white shadow-sm"
+              >
+                Confirm Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

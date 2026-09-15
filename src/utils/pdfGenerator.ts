@@ -6,7 +6,23 @@ export function formatUSD(val: number): string {
 }
 
 export function formatAED(val: number): string {
-  return new Intl.NumberFormat('en-AE', { style: 'currency', currency: 'AED', maximumFractionDigits: 2 }).format(val);
+  const rounded = Math.round(val);
+  return new Intl.NumberFormat('en-AE', { 
+    style: 'currency', 
+    currency: 'AED', 
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0 
+  }).format(rounded);
+}
+
+/**
+ * Converts USD amount to AED using standard rounding to nearest integer:
+ * e.g., 1175 * 3.6745 = 4317.5375 => 4318
+ * 4317.2375 => 4317
+ * Values with fractional part >= 0.5 round up to the next integer, < 0.5 round down.
+ */
+export function convertUsdToAed(usd: number, exchangeRate: number = 3.6725): number {
+  return Math.round(usd * exchangeRate);
 }
 
 export function generateOrderPDF(order: Order, generatedBy: string = 'System Administrator') {
@@ -26,12 +42,12 @@ export function generateOrderPDF(order: Order, generatedBy: string = 'System Adm
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
-  doc.text('NexusInsight', 14, 18);
+  doc.text('SFA Globex FZCO', 14, 18);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(148, 163, 184); // slate-400
-  doc.text('ENTERPRISE TRADE LIFECYCLE & FINANCIAL REPORT', 14, 25);
+  doc.text('FERRO ALLOYS & METALS TRADE CONTRACT REPORT • sfaglobex.ae', 14, 25);
   doc.text(`CONFIDENTIAL | AUDIT-SEALED | GENERATED: ${new Date().toLocaleString()}`, 14, 31);
 
   // Status Badge in Header
@@ -157,7 +173,7 @@ export function generateOrderPDF(order: Order, generatedBy: string = 'System Adm
   doc.setTextColor(71, 85, 105);
   doc.text('FINANCIAL ITEM', 18, boxY + 6);
   doc.text('US DOLLARS (USD)', 85, boxY + 6);
-  doc.text('UAE DIRHAMS (AED @ 3.6725)', 138, boxY + 6);
+  doc.text(`UAE DIRHAMS (AED @ ${order.exchangeRateUsdToAed || 3.6725})`, 138, boxY + 6);
 
   doc.setDrawColor(226, 232, 240);
   doc.line(14, boxY + 8, pageWidth - 14, boxY + 8);
@@ -169,9 +185,9 @@ export function generateOrderPDF(order: Order, generatedBy: string = 'System Adm
   doc.text(formatUSD(order.unitPriceUSD), 85, boxY + 14);
   doc.text(formatAED(order.unitPriceAED), 138, boxY + 14);
 
-  // Row 2: Total Order Value
+  // Row 2: Total Order Value (Quantity * Unit Price)
   doc.setFont('helvetica', 'bold');
-  doc.text('Total Order Value (Full Amount)', 18, boxY + 20);
+  doc.text(`Total Full Amount (${order.quantity} ${order.unit} x Price)`, 18, boxY + 20);
   doc.text(formatUSD(order.totalAmountUSD), 85, boxY + 20);
   doc.text(formatAED(order.totalAmountAED), 138, boxY + 20);
 
@@ -284,7 +300,7 @@ export function generateOrderPDF(order: Order, generatedBy: string = 'System Adm
   doc.text(`Digital Fingerprint: ${checksum}`, 18, currentY + 18);
 
   // Save/Download PDF
-  doc.save(`NexusInsight_${order.orderNumber}_Report.pdf`);
+  doc.save(`SFAGlobex_${order.orderNumber}_Report.pdf`);
 }
 
 export function generateExecutiveSummaryPDF(
@@ -306,12 +322,12 @@ export function generateExecutiveSummaryPDF(
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
-  doc.text('NexusInsight — Executive Financial & Trade Report', 14, 18);
+  doc.text('SFA Globex FZCO — Executive Financial & Trade Report', 14, 18);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(148, 163, 184);
-  doc.text(`ENTERPRISE CASH FLOW, OVERDUE RECEIVABLES & MONTHLY REVENUE | DATE: ${new Date().toLocaleDateString()}`, 14, 26);
+  doc.text(`FERRO ALLOYS TRADE CASH FLOW, RECEIVABLES & REVENUE | DATE: ${new Date().toLocaleDateString()}`, 14, 26);
 
   let y = 46;
   doc.setFontSize(11);

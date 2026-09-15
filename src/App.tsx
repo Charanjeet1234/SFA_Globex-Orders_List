@@ -92,6 +92,7 @@ export default function App() {
 
   const [alerts, setAlerts] = useState<AlertNotification[]>(INITIAL_ALERTS);
   const [currentUser, setCurrentUser] = useState<UserProfile>(INITIAL_USERS[0]);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   // Search & Year Filters
@@ -341,6 +342,18 @@ export default function App() {
     );
   };
 
+  // Delete company
+  const handleDeleteCompany = (companyId: string) => {
+    const comp = companies.find(c => c.id === companyId);
+    setCompanies(prev => prev.filter(c => c.id !== companyId));
+    logAudit(
+      'DELETE_ORDER',
+      companyId,
+      'ORDER',
+      `Deleted enterprise buyer company: ${comp?.name || companyId} from directory.`
+    );
+  };
+
   // Restore backup
   const handleRestoreBackup = (data: { orders: Order[]; companies: Company[] }) => {
     if (data.orders) setOrders(data.orders);
@@ -385,6 +398,28 @@ export default function App() {
     );
   };
 
+  // Handle successful authentication
+  const handleLoginSuccess = (user: UserProfile) => {
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    setIsAuthModalOpen(false);
+    logAudit('LOGIN_MFA', user.id, 'AUTH', `User ${user.name} (${user.role}) authenticated with password & Google Authenticator 2FA.`);
+  };
+
+  // Mandatory Authentication Gate: Always prompt for password and 2FA on open
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 selection:bg-blue-600 selection:text-white font-sans">
+        <AuthModal
+          isOpen={true}
+          isMandatory={true}
+          onLoginSuccess={handleLoginSuccess}
+          availableUsers={INITIAL_USERS}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col selection:bg-blue-600 selection:text-white font-sans">
       
@@ -397,7 +432,7 @@ export default function App() {
         onOpenSecurityAudit={() => setIsSecurityAuditOpen(true)}
         onOpenAlerts={() => setIsAlertsDrawerOpen(true)}
         onOpenExecutivePDF={handleExecutivePDF}
-        onLockSession={() => setIsAuthModalOpen(true)}
+        onLockSession={() => setIsAuthenticated(false)}
         alerts={alerts}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -530,6 +565,7 @@ export default function App() {
         companies={companies}
         orders={orders}
         onAddCompany={handleAddCompany}
+        onDeleteCompany={handleDeleteCompany}
       />
 
       {/* 6. Security & Audit Modal */}
@@ -558,11 +594,8 @@ export default function App() {
       {/* 8. Multi-Factor Authentication Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}
-        onLoginSuccess={(user) => {
-          setCurrentUser(user);
-          setIsAuthModalOpen(false);
-          logAudit('LOGIN_MFA', user.id, 'AUTH', `User ${user.name} verified MFA and entered session.`);
-        }}
+        onClose={() => setIsAuthModalOpen(false)}
+        onLoginSuccess={handleLoginSuccess}
         availableUsers={INITIAL_USERS}
       />
 

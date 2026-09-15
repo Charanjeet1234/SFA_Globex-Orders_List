@@ -521,6 +521,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           <div className="text-[11px] font-medium text-slate-500 font-mono">
                             {formatAED(order.totalAmountAED)}
                           </div>
+                          <div className="text-[9px] text-slate-400 mt-1 font-mono leading-tight space-y-0.5 border-t border-slate-100 pt-1">
+                            <div>{order.quantity.toLocaleString()} {order.unit} × {formatUSD(order.unitPriceUSD)}</div>
+                            <div>{order.quantity.toLocaleString()} {order.unit} × {formatAED(order.unitPriceAED)}</div>
+                          </div>
                         </div>
 
                         {/* Advance Received */}
@@ -710,6 +714,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       <td className="py-3.5 px-4 font-extrabold text-slate-900">
                         <div>{formatUSD(order.totalAmountUSD)}</div>
                         <div className="text-[10px] text-slate-500 font-mono font-normal">{formatAED(order.totalAmountAED)}</div>
+                        <div className="text-[9px] text-slate-400 font-normal mt-0.5 font-mono">
+                          {order.quantity} {order.unit} × {formatAED(order.unitPriceAED)}
+                        </div>
                       </td>
                       <td className="py-3.5 px-4 font-semibold text-emerald-600">
                         {formatUSD(order.advancePaymentUSD)}

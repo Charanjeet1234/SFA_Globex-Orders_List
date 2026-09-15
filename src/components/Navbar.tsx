@@ -285,7 +285,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <BarChart3 className="w-3.5 h-3.5" />
-              <span>Executive Financial Dashboard</span>
+              <span>Executive Analytics & Graphs</span>
+              <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold transition ${
+                activeTab === 'analytics' ? 'bg-white text-sky-900' : 'bg-sky-400/20 text-sky-300'
+              }`}>
+                Visual
+              </span>
             </button>
 
             <button

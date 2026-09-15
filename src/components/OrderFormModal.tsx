@@ -14,7 +14,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Order, Company, OrderStage, ORDER_STAGES } from '../types';
-import { formatUSD, formatAED } from '../utils/pdfGenerator';
+import { formatUSD, formatAED, convertUsdToAed } from '../utils/pdfGenerator';
 import { computeSHA256 } from '../utils/encryption';
 import { AedRateSelector } from './AedRateSelector';
 import { SFA_PRODUCT_CATALOG } from '../utils/mockData';
@@ -48,6 +48,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   const [unitPriceUSD, setUnitPriceUSD] = useState<number>(980);
   const [advancePercent, setAdvancePercent] = useState<number>(20); // 20% default advance
   const [customAdvanceUSD, setCustomAdvanceUSD] = useState<number>(0);
+  const [advanceMode, setAdvanceMode] = useState<'percent' | 'custom_usd' | 'custom_aed'>('percent');
 
   // New specific requirement: Allow user to select that only PI issued from company and waiting for PI to be signed from buyer
   const [isWaitingForBuyerPI, setIsWaitingForBuyerPI] = useState<boolean>(true);
@@ -66,14 +67,18 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   const [carrierName, setCarrierName] = useState('Maersk Line / Hapag-Lloyd');
   const [notes, setNotes] = useState('');
 
-  // Calculations
-  const unitPriceAED = Number((unitPriceUSD * exchangeRate).toFixed(3));
+  // Unit Price AED (Standard integer rounding: e.g. 1175 * 3.6745 = 4317.5375 -> 4318, 4317.2375 -> 4317)
+  const unitPriceAED = convertUsdToAed(unitPriceUSD, exchangeRate);
+  // Full Amount of Order: Quantity * USD Price, and Quantity * AED Price
   const totalAmountUSD = Math.round(quantity * unitPriceUSD);
-  const totalAmountAED = Number((totalAmountUSD * exchangeRate).toFixed(2));
+  const totalAmountAED = Math.round(quantity * unitPriceAED);
 
   // Advance Payment
-  const advancePaymentUSD = customAdvanceUSD > 0 ? customAdvanceUSD : Math.round(totalAmountUSD * (advancePercent / 100));
-  const advancePaymentAED = Number((advancePaymentUSD * exchangeRate).toFixed(2));
+  const advancePaymentUSD = advanceMode === 'percent'
+    ? Math.round(totalAmountUSD * (advancePercent / 100))
+    : Math.min(totalAmountUSD, Math.max(0, customAdvanceUSD));
+  const advancePaymentAED = convertUsdToAed(advancePaymentUSD, exchangeRate);
+  const effectiveAdvancePercent = totalAmountUSD > 0 ? ((advancePaymentUSD / totalAmountUSD) * 100).toFixed(1) : '0.0';
 
   // Balance Payment: Full Amount - Advance Payment
   const balancePaymentUSD = Math.max(0, totalAmountUSD - advancePaymentUSD);
@@ -476,50 +481,142 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
             </div>
 
             {/* Advance payment options */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700">
-                  Advance Payment Deposit
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-slate-500">Quick %:</span>
-                  {[10, 15, 20, 25, 30, 50, 100].map((pct) => (
-                    <button
-                      key={pct}
-                      type="button"
-                      onClick={() => {
-                        setAdvancePercent(pct);
-                        setCustomAdvanceUSD(0);
-                      }}
-                      className={`px-2 py-0.5 rounded text-[11px] font-bold transition ${
-                        advancePercent === pct && customAdvanceUSD === 0
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
-                      }`}
-                    >
-                      {pct}%
-                    </button>
-                  ))}
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-800">
+                    Advance Payment Structure
+                  </label>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+                    {effectiveAdvancePercent}% of Total Order
+                  </span>
+                </div>
+
+                {/* Mode Selector */}
+                <div className="flex items-center bg-white p-1 rounded-xl border border-slate-200 shadow-2xs self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdvanceMode('percent');
+                      setCustomAdvanceUSD(Math.round(totalAmountUSD * (advancePercent / 100)));
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                      advanceMode === 'percent'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Quick % Preset
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdvanceMode('custom_usd');
+                      setCustomAdvanceUSD(advancePaymentUSD);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                      advanceMode === 'custom_usd'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Custom USD ($)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAdvanceMode('custom_aed');
+                      setCustomAdvanceUSD(advancePaymentUSD);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition ${
+                      advanceMode === 'custom_aed'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Custom AED
+                  </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">$</span>
-                  <input
-                    type="number"
-                    min="0"
-                    max={totalAmountUSD}
-                    value={advancePaymentUSD}
-                    onChange={(e) => {
-                      setCustomAdvanceUSD(Math.max(0, parseFloat(e.target.value) || 0));
-                    }}
-                    placeholder="Advance in USD"
-                    className="w-full text-xs pl-7 pr-3 py-2.5 rounded-xl border border-slate-300 focus:border-blue-500 focus:outline-none font-bold"
-                  />
+              {/* Mode 1: Quick % Preset */}
+              {advanceMode === 'percent' && (
+                <div>
+                  <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                    {[10, 15, 20, 25, 30, 40, 50, 100].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => {
+                          setAdvancePercent(pct);
+                          setCustomAdvanceUSD(Math.round(totalAmountUSD * (pct / 100)));
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                          advancePercent === pct
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        {pct}% {pct === 100 ? '(Full)' : ''}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs font-medium text-slate-700 flex items-center justify-between">
-                  <span className="text-slate-500">Advance in AED:</span>
+              )}
+
+              {/* Mode 2: Custom USD Input */}
+              {advanceMode === 'custom_usd' && (
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-slate-600">Enter Exact Custom Advance in US Dollars:</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max={totalAmountUSD}
+                      value={advancePaymentUSD}
+                      onChange={(e) => {
+                        const val = Math.max(0, Math.min(totalAmountUSD, parseFloat(e.target.value) || 0));
+                        setCustomAdvanceUSD(val);
+                      }}
+                      placeholder="e.g. 50000"
+                      className="w-full text-xs pl-7 pr-3 py-2.5 rounded-xl border border-slate-300 bg-white focus:border-blue-500 focus:outline-none font-bold"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Mode 3: Custom AED Input */}
+              {advanceMode === 'custom_aed' && (
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-slate-600">Enter Exact Custom Advance in UAE Dirhams (AED):</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">AED</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max={totalAmountAED}
+                      value={advancePaymentAED}
+                      onChange={(e) => {
+                        const aedVal = Math.max(0, parseFloat(e.target.value) || 0);
+                        const usdCalculated = Math.round(aedVal / exchangeRate);
+                        setCustomAdvanceUSD(Math.min(totalAmountUSD, usdCalculated));
+                      }}
+                      placeholder="e.g. 180000"
+                      className="w-full text-xs pl-12 pr-3 py-2.5 rounded-xl border border-slate-300 bg-white focus:border-blue-500 focus:outline-none font-bold"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Real-time Advance Values Box */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-xs">
+                <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
+                  <span className="text-slate-500">Advance (USD):</span>
+                  <span className="font-bold text-slate-900">{formatUSD(advancePaymentUSD)}</span>
+                </div>
+                <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
+                  <span className="text-slate-500">Advance (AED):</span>
                   <span className="font-mono font-bold text-slate-900">{formatAED(advancePaymentAED)}</span>
                 </div>
               </div>
@@ -530,7 +627,11 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
               <div className="p-3 bg-white rounded-xl border border-slate-200">
                 <div className="text-[10px] font-bold text-slate-400 uppercase">Total Full Amount</div>
                 <div className="text-base font-black text-slate-900 mt-0.5">{formatUSD(totalAmountUSD)}</div>
-                <div className="text-xs font-medium text-slate-500">{formatAED(totalAmountAED)}</div>
+                <div className="text-xs font-semibold text-slate-600 font-mono">{formatAED(totalAmountAED)}</div>
+                <div className="text-[10px] text-slate-400 mt-1 font-mono leading-tight space-y-0.5 border-t border-slate-100 pt-1">
+                  <div>Qty × USD: {quantity} {unit} × {formatUSD(unitPriceUSD)}</div>
+                  <div>Qty × AED: {quantity} {unit} × {formatAED(unitPriceAED)}</div>
+                </div>
               </div>
 
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">

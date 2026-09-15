@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Order, OrderStage, ORDER_STAGES, UserRole, StageRecord } from '../types';
-import { formatUSD, formatAED, generateOrderPDF } from '../utils/pdfGenerator';
+import { formatUSD, formatAED, generateOrderPDF, convertUsdToAed } from '../utils/pdfGenerator';
 
 interface OrderDetailModalProps {
   order: Order | null;
@@ -122,9 +122,9 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 
     const rate = order.exchangeRateUsdToAed || 3.6725;
     const newAdvanceUSD = Math.min(order.totalAmountUSD, order.advancePaymentUSD + payAmount);
-    const newAdvanceAED = Number((newAdvanceUSD * rate).toFixed(2));
+    const newAdvanceAED = convertUsdToAed(newAdvanceUSD, rate);
     const newBalanceUSD = Math.max(0, order.totalAmountUSD - newAdvanceUSD);
-    const newBalanceAED = Number((newBalanceUSD * rate).toFixed(2));
+    const newBalanceAED = Math.max(0, order.totalAmountAED - newAdvanceAED);
     const isFull = newBalanceUSD === 0;
 
     const updatedStages = { ...order.stagesHistory };
@@ -532,8 +532,9 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                   <div className="text-xs font-semibold text-slate-600 mt-0.5 font-mono">
                     {formatAED(order.totalAmountAED)}
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-2">
-                    {order.quantity.toLocaleString()} {order.unit} @ {formatUSD(order.unitPriceUSD)}/unit
+                  <div className="text-[11px] text-slate-500 mt-2 font-mono space-y-0.5 border-t border-slate-200/80 pt-1.5">
+                    <div>{order.quantity.toLocaleString()} {order.unit} × {formatUSD(order.unitPriceUSD)} = {formatUSD(order.totalAmountUSD)}</div>
+                    <div>{order.quantity.toLocaleString()} {order.unit} × {formatAED(order.unitPriceAED)} = {formatAED(order.totalAmountAED)}</div>
                   </div>
                 </div>
 
