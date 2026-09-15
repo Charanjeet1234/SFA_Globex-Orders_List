@@ -1,6 +1,12 @@
 import { productionStore } from '../lib/postgres-store.js';
 import { handleAuthProxyRequest } from '@neondatabase/auth/server';
 
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 async function readBody(request) {
   if (request.body && typeof request.body === 'object' && !Buffer.isBuffer(request.body)) {
     return request.body;
@@ -24,6 +30,57 @@ function send(response, status, value) {
 function appendCookies(response, upstream) {
   const cookies = upstream.headers.getSetCookie?.() || [];
   if (cookies.length) response.setHeader('Set-Cookie', cookies);
+}
+
+function requestHeaders(headers) {
+  const result = new Headers();
+  for (const [name, value] of Object.entries(headers)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) result.append(name, entry);
+    } else if (value) {
+      result.set(name, value);
+    }
+  }
+  return result;
+}
+
+function toFetchRequest(request) {
+  const protocol = request.headers['x-forwarded-proto'] || 'https';
+  const host = request.headers.host || 'localhost';
+  const init = {
+    method: request.method,
+    headers: requestHeaders(request.headers),
+  };
+
+  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+    init.body = request;
+    init.duplex = 'half';
+  }
+
+  return new Request(new URL(request.url || '/', `${protocol}://${host}`), init);
+}
+
+async function proxyAuthenticationRequest(request, response, path) {
+  if (!process.env.NEON_AUTH_BASE_URL || !process.env.NEON_AUTH_COOKIE_SECRET) {
+    send(response, 503, { error: 'Authentication is not configured for this deployment.' });
+    return;
+  }
+
+  const upstream = await handleAuthProxyRequest({
+    request: toFetchRequest(request),
+    path,
+    baseUrl: process.env.NEON_AUTH_BASE_URL,
+    cookieSecret: process.env.NEON_AUTH_COOKIE_SECRET,
+    sessionDataTtl: 60,
+    sameSite: 'lax',
+  });
+
+  response.status(upstream.status);
+  for (const [name, value] of upstream.headers) {
+    if (name.toLowerCase() !== 'set-cookie') response.setHeader(name, value);
+  }
+  appendCookies(response, upstream);
+  response.end(Buffer.from(await upstream.arrayBuffer()));
 }
 
 async function requireAuthenticatedUser(request, response) {
@@ -61,18 +118,23 @@ async function requireAuthenticatedUser(request, response) {
 }
 
 export default async function handler(request, response) {
-  if (!process.env.DATABASE_URL) {
-    send(response, 503, {
-      error: 'The production database is not configured. Add DATABASE_URL in Vercel before using this deployment.',
-    });
-    return;
-  }
-
   const url = new URL(request.url, `https://${request.headers.host || 'localhost'}`);
   const path = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
   const [resource, id, action] = path;
 
   try {
+    if (resource === 'auth') {
+      await proxyAuthenticationRequest(request, response, path.slice(1).join('/'));
+      return;
+    }
+
+    if (!process.env.DATABASE_URL) {
+      send(response, 503, {
+        error: 'The production database is not configured. Add DATABASE_URL in Vercel before using this deployment.',
+      });
+      return;
+    }
+
     const user = await requireAuthenticatedUser(request, response);
     if (!user) {
       return;
