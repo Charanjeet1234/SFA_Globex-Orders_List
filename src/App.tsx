@@ -61,6 +61,13 @@ import { databaseApi, DatabaseState } from './api';
 const LEGACY_STORAGE_KEY_ORDERS = 'sfa_globex_orders_v2';
 const LEGACY_STORAGE_KEY_COMPANIES = 'sfa_globex_companies_v2';
 const LEGACY_STORAGE_KEY_LOGS = 'sfa_globex_audit_logs_v2';
+const SESSION_STORAGE_KEY = 'sfa_globex_session_v1';
+const SESSION_INACTIVITY_LIMIT_MS = 60_000;
+
+interface StoredSession {
+  userId: string;
+  expiresAt: number;
+}
 
 function readLegacyCollection<T>(key: string, fallback: T[]): T[] {
   try {
@@ -72,6 +79,35 @@ function readLegacyCollection<T>(key: string, fallback: T[]): T[] {
   }
 }
 
+function readStoredSession(): StoredSession | null {
+  try {
+    const saved = localStorage.getItem(SESSION_STORAGE_KEY);
+    const session = saved ? JSON.parse(saved) : null;
+    if (
+      !session ||
+      typeof session.userId !== 'string' ||
+      typeof session.expiresAt !== 'number' ||
+      session.expiresAt <= Date.now()
+    ) {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
+    return session;
+  } catch {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    return null;
+  }
+}
+
+function saveSession(userId: string): StoredSession {
+  const session = {
+    userId,
+    expiresAt: Date.now() + SESSION_INACTIVITY_LIMIT_MS,
+  };
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  return session;
+}
+
 export default function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -79,9 +115,14 @@ export default function App() {
   const [isDatabaseReady, setIsDatabaseReady] = useState(false);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
 
+  const [restoredSession] = useState(() => readStoredSession());
   const [alerts, setAlerts] = useState<AlertNotification[]>(INITIAL_ALERTS);
-  const [currentUser, setCurrentUser] = useState<UserProfile>(INITIAL_USERS[0]);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(
+    () => INITIAL_USERS.find((user) => user.id === restoredSession?.userId) || INITIAL_USERS[0],
+  );
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
+    () => Boolean(restoredSession && INITIAL_USERS.some((user) => user.id === restoredSession.userId)),
+  );
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
 
   // Search & Year Filters
@@ -141,6 +182,42 @@ export default function App() {
       isCurrent = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let timeoutId: number | undefined;
+
+    const endSession = () => {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      setIsAuthenticated(false);
+      setIsAuthModalOpen(false);
+    };
+
+    const scheduleLogout = (expiresAt: number) => {
+      window.clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(endSession, Math.max(0, expiresAt - Date.now()));
+    };
+
+    const recordActivity = () => {
+      const existingSession = readStoredSession();
+      if (!existingSession) {
+        endSession();
+        return;
+      }
+      scheduleLogout(saveSession(currentUser.id).expiresAt);
+    };
+
+    // A successful refresh counts as activity, while an expired session never revives.
+    scheduleLogout(readStoredSession()?.expiresAt || Date.now());
+    const activityEvents: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'focus'];
+    activityEvents.forEach((eventName) => window.addEventListener(eventName, recordActivity));
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      activityEvents.forEach((eventName) => window.removeEventListener(eventName, recordActivity));
+    };
+  }, [currentUser.id, isAuthenticated]);
 
   // Helper to append secure audit log
   const logAudit = async (
@@ -454,10 +531,17 @@ export default function App() {
 
   // Handle successful authentication
   const handleLoginSuccess = (user: UserProfile) => {
+    saveSession(user.id);
     setCurrentUser(user);
     setIsAuthenticated(true);
     setIsAuthModalOpen(false);
     logAudit('LOGIN_MFA', user.id, 'AUTH', `User ${user.name} (${user.role}) authenticated with password & Google Authenticator 2FA.`);
+  };
+
+  const handleLockSession = () => {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    setIsAuthenticated(false);
+    setIsAuthModalOpen(false);
   };
 
   if (!isDatabaseReady) {
@@ -497,7 +581,7 @@ export default function App() {
         onOpenSecurityAudit={() => setIsSecurityAuditOpen(true)}
         onOpenAlerts={() => setIsAlertsDrawerOpen(true)}
         onOpenExecutivePDF={handleExecutivePDF}
-        onLockSession={() => setIsAuthenticated(false)}
+        onLockSession={handleLockSession}
         alerts={alerts}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
