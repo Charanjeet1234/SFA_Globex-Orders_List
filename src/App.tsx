@@ -203,16 +203,10 @@ export default function App() {
     };
 
     const recordActivity = () => {
-      const existingSession = readStoredSession();
-      if (!existingSession) {
-        endSession();
-        return;
-      }
       scheduleLogout(saveSession(currentUser.id).expiresAt);
     };
 
-    // A successful refresh counts as activity, while an expired session never revives.
-    scheduleLogout(readStoredSession()?.expiresAt || Date.now());
+    scheduleLogout(saveSession(currentUser.id).expiresAt);
     const activityEvents: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart', 'scroll', 'focus'];
     activityEvents.forEach((eventName) => window.addEventListener(eventName, recordActivity));
 
