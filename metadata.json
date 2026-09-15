@@ -1,0 +1,6 @@
+{
+  "name": "SFA Globex — Trade & Order Lifecycle System",
+  "description": "International Trade Order Lifecycle, Multi-Currency Balance Governance, and Executive Trade Operations for SFA Globex FZCO (sfaglobex.ae), Dubai, UAE.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
