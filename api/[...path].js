@@ -123,7 +123,12 @@ async function requireAuthenticatedUser(request, response) {
   }
 
   const session = await sessionResponse.json();
-  return session?.user || session?.data?.user || null;
+  const user = session?.user || session?.data?.user || null;
+  if (!user) {
+    send(response, 401, { error: 'Authentication is required to access the order database.' });
+    return null;
+  }
+  return user;
 }
 
 export default async function handler(request, response) {
