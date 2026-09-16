@@ -254,7 +254,7 @@ export const INITIAL_ALERTS: AlertNotification[] = [];
 export const INITIAL_AUDIT_LOGS: AuditLog[] = [
   {
     id: 'aud-sfa-init',
-    timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19) + ' GST',
+    timestamp: new Date().toISOString(),
     userId: 'usr-sfa-owner',
     userName: 'SFA Globex Management',
     userRole: 'owner',

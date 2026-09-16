@@ -223,7 +223,7 @@ export default function App() {
     targetType: AuditLog['targetType'],
     details: string
   ) => {
-    const now = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' GST';
+    const now = new Date().toISOString();
     const hash = await generateSecureAuditHash(action, targetId, now, currentUser.id);
     const newLog: AuditLog = {
       id: `aud-${Date.now()}`,

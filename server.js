@@ -44,6 +44,17 @@ database.exec(`
 const readPayload = (row) => JSON.parse(row.payload);
 const now = () => new Date().toISOString();
 
+function normalizeTimestamp(value) {
+  if (typeof value !== 'string' || !value.trim()) return now();
+
+  const input = value.trim();
+  const gstMatch = input.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?\s*GST$/i);
+  if (gstMatch) return `${gstMatch[1]}T${gstMatch[2]}+04:00`;
+
+  const parsed = new Date(input);
+  return Number.isNaN(parsed.getTime()) ? now() : parsed.toISOString();
+}
+
 function getState() {
   return {
     initialized: Boolean(database.prepare("SELECT 1 FROM app_metadata WHERE key = 'initialized'").get()),
@@ -133,7 +144,10 @@ const replaceState = database.transaction(({ orders = [], companies = [], auditL
   });
   replaceRows('audit_logs', auditLogs, {
     sql: 'INSERT INTO audit_logs (id, payload, created_at) VALUES (?, ?, ?)',
-    values: (log) => [log.id, JSON.stringify(log), log.timestamp || now()],
+    values: (log) => {
+      const createdAt = normalizeTimestamp(log.timestamp);
+      return [log.id, JSON.stringify({ ...log, timestamp: createdAt }), createdAt];
+    },
   });
   database.prepare("INSERT OR REPLACE INTO app_metadata (key, value) VALUES ('initialized', 'true')").run();
   refreshCompanySummaries();
@@ -228,8 +242,10 @@ app.post('/api/audit-logs', (request, response, next) => {
   try {
     const log = request.body;
     if (!log?.id) throw new Error('An audit log id is required.');
-    upsertLogStatement.run(log.id, JSON.stringify(log), log.timestamp || now());
-    response.status(201).json(log);
+    const createdAt = normalizeTimestamp(log.timestamp);
+    const persistedLog = { ...log, timestamp: createdAt };
+    upsertLogStatement.run(persistedLog.id, JSON.stringify(persistedLog), createdAt);
+    response.status(201).json(persistedLog);
   } catch (error) {
     next(error);
   }
