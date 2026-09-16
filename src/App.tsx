@@ -63,7 +63,6 @@ const LEGACY_STORAGE_KEY_COMPANIES = 'sfa_globex_companies_v2';
 const LEGACY_STORAGE_KEY_LOGS = 'sfa_globex_audit_logs_v2';
 const SESSION_STORAGE_KEY = 'sfa_globex_session_v1';
 const SESSION_INACTIVITY_LIMIT_MS = 60_000;
-
 interface StoredSession {
   userId: string;
   expiresAt: number;
@@ -546,7 +545,7 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <div className="sfa-auth-ui min-h-screen overflow-y-auto bg-slate-950 px-3 py-8 text-slate-100 selection:bg-blue-600 selection:text-white sm:flex sm:items-center sm:justify-center sm:p-6">
+      <div className="sfa-auth-ui min-h-[100dvh] overflow-y-auto bg-slate-950 px-4 py-6 text-slate-100 selection:bg-blue-600 selection:text-white sm:grid sm:place-items-center sm:p-6">
         <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900 shadow-2xl shadow-blue-950/40">
           <div className="border-b border-slate-700/80 bg-gradient-to-r from-slate-950 via-blue-950 to-slate-950 px-6 py-7 text-center">
             <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 shadow-lg shadow-blue-500/30 ring-2 ring-white/20">
@@ -613,7 +612,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-4 sm:px-6 sm:py-6 lg:px-8">
 
         {databaseError && (
           <div role="alert" className="mb-5 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800">
@@ -651,9 +650,9 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-slate-900 border-t border-slate-800 text-slate-400 py-6 text-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
+      <footer className="bg-slate-900 border-t border-slate-800 py-5 text-xs text-slate-400 sm:py-6">
+        <div className="max-w-7xl mx-auto flex flex-col items-center justify-between gap-4 px-4 text-center sm:flex-row sm:px-6 sm:text-left lg:px-8">
+          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 sm:justify-start">
             <span className="font-bold text-white tracking-wider">SFA Globex FZCO</span>
             <span className="text-slate-600">|</span>
             <a 
@@ -668,7 +667,7 @@ export default function App() {
             <span>Jumeirah Lakes Towers (JLT), Dubai, UAE</span>
           </div>
 
-          <div className="flex items-center gap-4 text-slate-400">
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-slate-400 sm:justify-end">
             <button
               onClick={() => setIsSecurityAuditOpen(true)}
               className="hover:text-emerald-400 transition"

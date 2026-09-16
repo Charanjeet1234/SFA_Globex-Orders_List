@@ -88,16 +88,16 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="sticky top-0 z-40 bg-slate-900 border-b border-slate-800 text-white shadow-xl">
       {/* Top tier: Brand, Search, Security status & Actions */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-3">
+        <div className="flex min-h-16 items-center justify-between gap-2 py-3 sm:gap-3 sm:py-0">
           
           {/* Brand Identity */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 ring-1 ring-white/20">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-lg shadow-blue-500/20 ring-1 ring-white/20">
               <span className="font-black text-white text-base tracking-wider">SFA</span>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-lg sm:text-xl tracking-tight text-white">SFA Globex FZCO</span>
+                <span className="truncate font-extrabold text-base tracking-tight text-white sm:text-xl">SFA Globex FZCO</span>
                 <span className="hidden sm:inline-block px-2 py-0.5 text-[10px] font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full tracking-wide">
                   sfaglobex.ae
                 </span>
@@ -141,7 +141,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Actions & Utilities */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             
             {/* Live Clock */}
             <div className="hidden xl:flex items-center gap-1.5 text-xs text-slate-400 bg-slate-800/60 px-2.5 py-1.5 rounded-lg border border-slate-700/50">
@@ -152,7 +152,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* End-to-End Encryption & Security Audit Badge */}
             <button
               onClick={onOpenSecurityAudit}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-900/50 text-xs font-semibold transition"
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/60 p-2 text-xs font-semibold text-emerald-400 transition hover:bg-emerald-900/50 sm:px-2.5 sm:py-1.5"
               title="AES-256-GCM End-to-End Encrypted Data & Audit Logs"
             >
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -190,7 +190,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="relative">
               <button
                 onClick={() => setRoleMenuOpen(!roleMenuOpen)}
-                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2.5 py-1.5 rounded-lg transition"
+                className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 p-2 transition hover:bg-slate-700 sm:px-2.5 sm:py-1.5"
               >
                 <div className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center font-bold text-xs uppercase">
                   {currentUser.role[0]}
@@ -262,8 +262,9 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Lower tier: Navigation tabs & quick metrics */}
-        <div className="flex items-center justify-between border-t border-slate-800 py-2.5 overflow-x-auto gap-4">
-          <div className="flex items-center gap-1 sm:gap-2">
+        <div className="overflow-x-auto border-t border-slate-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex min-w-max items-center gap-4 py-2.5">
+            <div className="flex items-center gap-1 sm:gap-2">
             <button
               onClick={() => setActiveTab('orders')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
@@ -312,6 +313,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden sm:inline">Export PDF Report</span>
             </button>
           </div>
+        </div>
         </div>
 
         {/* Mobile Search input */}

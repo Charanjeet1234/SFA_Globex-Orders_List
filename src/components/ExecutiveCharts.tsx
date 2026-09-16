@@ -244,9 +244,9 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
     <div className="space-y-6">
       
       {/* Header with Visual Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="p-1.5 bg-sky-50 rounded-lg text-sky-600">
               <BarChart3 className="w-4 h-4" />
             </div>
@@ -263,10 +263,10 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
         </div>
 
         {/* Chart View Filters */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl self-start sm:self-auto text-xs font-semibold">
+        <div className="grid w-full grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 text-xs font-semibold sm:flex sm:w-auto sm:self-auto">
           <button
             onClick={() => setActiveChartTab('all')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-center transition ${
               activeChartTab === 'all'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -276,7 +276,7 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
           </button>
           <button
             onClick={() => setActiveChartTab('cashflow')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-center transition ${
               activeChartTab === 'cashflow'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -286,7 +286,7 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
           </button>
           <button
             onClick={() => setActiveChartTab('stages')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-center transition ${
               activeChartTab === 'stages'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -296,7 +296,7 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
           </button>
           <button
             onClick={() => setActiveChartTab('buyers')}
-            className={`px-3 py-1.5 rounded-lg transition ${
+            className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-center transition ${
               activeChartTab === 'buyers'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -314,7 +314,7 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
         {(activeChartTab === 'all' || activeChartTab === 'cashflow') && (
           <div className={`${activeChartTab === 'cashflow' ? 'lg:col-span-12' : 'lg:col-span-7'} bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between`}>
             <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex flex-col gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="p-1.5 bg-emerald-50 rounded-lg text-emerald-600">
@@ -384,7 +384,7 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
             </div>
 
             {/* Quick Summary Row */}
-            <div className="pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 text-center text-xs min-[420px]:grid-cols-3">
               <div className="p-2 bg-slate-50 rounded-xl">
                 <div className="text-[10px] text-slate-500">Total Tracked Revenue</div>
                 <div className="font-extrabold text-slate-900 mt-0.5">
@@ -417,7 +417,7 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
         {(activeChartTab === 'all' || activeChartTab === 'stages') && (
           <div className={`${activeChartTab === 'stages' ? 'lg:col-span-12' : 'lg:col-span-5'} bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between`}>
             <div>
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex flex-col gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2">
                   <span className="p-1.5 bg-blue-50 rounded-lg text-blue-600">
                     <PieChartIcon className="w-4 h-4" />
@@ -485,7 +485,7 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
       {/* Row 2: Buyer Volume & Credit Exposure Horizontal Bar Chart */}
       {(activeChartTab === 'all' || activeChartTab === 'buyers') && (
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-2">
+          <div className="flex flex-col gap-2 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
                 <span className="p-1.5 bg-indigo-50 rounded-lg text-indigo-600">
@@ -515,7 +515,7 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
               <BarChart
                 layout="vertical"
                 data={buyerExposureData}
-                margin={{ top: 5, right: 20, left: 30, bottom: 5 }}
+                margin={{ top: 5, right: 8, left: 0, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
                 <XAxis 
@@ -531,7 +531,7 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
                   tick={{ fill: '#334155', fontSize: 11, fontWeight: 600 }}
                   axisLine={{ stroke: '#e2e8f0' }}
                   tickLine={false}
-                  width={140}
+                  width={100}
                 />
                 <Tooltip
                   formatter={(value: any, name: any) => [

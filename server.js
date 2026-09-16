@@ -1,11 +1,14 @@
 import express from 'express';
 import Database from 'better-sqlite3';
 import { createServer as createViteServer } from 'vite';
+import { handleAuthProxyRequest } from '@neondatabase/auth/server';
+import dotenv from 'dotenv';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const projectDirectory = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(projectDirectory, '.env.local'), quiet: true });
 const databasePath = process.env.SFA_DATABASE_PATH || path.join(projectDirectory, 'data', 'sfa-globex.sqlite');
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
@@ -53,6 +56,77 @@ function normalizeTimestamp(value) {
 
   const parsed = new Date(input);
   return Number.isNaN(parsed.getTime()) ? now() : parsed.toISOString();
+}
+
+function requestHeaders(headers) {
+  const result = new Headers();
+  for (const [name, value] of Object.entries(headers)) {
+    if (Array.isArray(value)) {
+      for (const entry of value) result.append(name, entry);
+    } else if (value) {
+      result.set(name, value);
+    }
+  }
+  return result;
+}
+
+function authPathFrom(request) {
+  const url = new URL(request.originalUrl || request.url || '/', `http://${request.headers.host || 'localhost'}`);
+  return url.pathname.replace(/^\/api\/auth\/?/, '');
+}
+
+function toAuthFetchRequest(request, path) {
+  const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+  const host = request.headers.host || 'localhost';
+  const url = new URL(request.originalUrl || request.url || '/', `${protocol}://${host}`);
+  url.pathname = `/api/auth/${path}`;
+
+  const init = {
+    method: request.method,
+    headers: requestHeaders(request.headers),
+  };
+
+  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+    init.body = request;
+    init.duplex = 'half';
+  }
+
+  return new Request(url, init);
+}
+
+function copyAuthResponse(response, upstream) {
+  response.status(upstream.status);
+  for (const [name, value] of upstream.headers) {
+    if (name.toLowerCase() !== 'set-cookie') response.setHeader(name, value);
+  }
+  const cookies = upstream.headers.getSetCookie?.() || [];
+  if (cookies.length) response.setHeader('Set-Cookie', cookies);
+}
+
+async function getAuthenticatedUser(request, response) {
+  const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
+  const host = request.headers.host || 'localhost';
+  const sessionRequest = new Request(new URL('/api/auth/get-session', `${protocol}://${host}`), {
+    method: 'GET',
+    headers: {
+      cookie: request.headers.cookie || '',
+      origin: `${protocol}://${host}`,
+    },
+  });
+  const sessionResponse = await handleAuthProxyRequest({
+    request: sessionRequest,
+    path: 'get-session',
+    baseUrl: process.env.NEON_AUTH_BASE_URL,
+    cookieSecret: process.env.NEON_AUTH_COOKIE_SECRET,
+    sessionDataTtl: 60,
+    sameSite: 'lax',
+  });
+  const cookies = sessionResponse.headers.getSetCookie?.() || [];
+  if (cookies.length) response.setHeader('Set-Cookie', cookies);
+
+  if (!sessionResponse.ok) return null;
+  const session = await sessionResponse.json();
+  return session?.user || session?.data?.user || null;
 }
 
 function getState() {
@@ -154,7 +228,51 @@ const replaceState = database.transaction(({ orders = [], companies = [], auditL
 });
 
 const app = express();
+
+app.all('/api/auth/*', async (request, response, next) => {
+  try {
+    if (!process.env.NEON_AUTH_BASE_URL || !process.env.NEON_AUTH_COOKIE_SECRET) {
+      response.status(503).json({ error: 'Authentication is not configured for local development.' });
+      return;
+    }
+
+    const path = authPathFrom(request);
+    const upstream = await handleAuthProxyRequest({
+      request: toAuthFetchRequest(request, path),
+      path,
+      baseUrl: process.env.NEON_AUTH_BASE_URL,
+      cookieSecret: process.env.NEON_AUTH_COOKIE_SECRET,
+      sessionDataTtl: 60,
+      sameSite: 'lax',
+    });
+    copyAuthResponse(response, upstream);
+    response.end(Buffer.from(await upstream.arrayBuffer()));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Auth requests must retain their raw request stream for the Neon proxy.
 app.use(express.json({ limit: '1mb' }));
+
+app.use('/api', async (request, response, next) => {
+  try {
+    if (!process.env.NEON_AUTH_BASE_URL || !process.env.NEON_AUTH_COOKIE_SECRET) {
+      response.status(503).json({ error: 'Authentication is not configured for local development.' });
+      return;
+    }
+
+    const user = await getAuthenticatedUser(request, response);
+    if (!user) {
+      response.status(401).json({ error: 'Authentication is required to access the local order database.' });
+      return;
+    }
+    response.locals.user = user;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get('/api/state', (_request, response) => {
   response.json(getState());
@@ -261,7 +379,13 @@ if (process.env.NODE_ENV === 'production') {
   app.get('*', (_request, response) => response.sendFile(path.join(projectDirectory, 'dist', 'index.html')));
 } else {
   const vite = await createViteServer({
-    server: { middlewareMode: true },
+    server: {
+      middlewareMode: true,
+      hmr: {
+        host: '127.0.0.1',
+        port: Number(process.env.SFA_HMR_PORT || 24679),
+      },
+    },
     appType: 'spa',
   });
   app.use(vite.middlewares);

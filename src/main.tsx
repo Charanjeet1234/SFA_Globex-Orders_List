@@ -3,7 +3,6 @@ import {createRoot} from 'react-dom/client';
 import { NeonAuthUIProvider } from '@neondatabase/auth-ui';
 import App from './App.tsx';
 import { authClient } from './auth';
-import '@neondatabase/auth-ui/css';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(

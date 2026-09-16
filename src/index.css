@@ -1,3 +1,6 @@
+/* Place the auth package reset in a lower-priority layer so portal utilities
+   retain their button, spacing, and color styles. */
+@import "@neondatabase/auth-ui/css" layer(auth-ui);
 @import "tailwindcss";
 
 /* Keep the managed account screens visually consistent with the SFA Globex portal. */
