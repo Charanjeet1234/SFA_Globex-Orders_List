@@ -1,5 +1,6 @@
 import { productionStore } from '../lib/postgres-store.js';
 import { handleAuthProxyRequest } from '@neondatabase/auth/server';
+import { getAdminEmail, isAdminUser } from '../lib/admin-access.js';
 
 export const config = {
   api: {
@@ -29,6 +30,17 @@ function apiPathFrom(request) {
 
   const url = new URL(request.url, `https://${request.headers.host || 'localhost'}`);
   return url.pathname.replace(/^\/api\/?/, '');
+}
+
+function orderIdFromPath(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    return decodeURIComponent(raw).trim();
+  } catch {
+    throw new Error('The order URL contains an invalid order ID.');
+  }
 }
 
 function send(response, status, value) {
@@ -93,6 +105,11 @@ async function proxyAuthenticationRequest(request, response, path) {
 }
 
 async function requireAuthenticatedUser(request, response) {
+  if (!getAdminEmail()) {
+    send(response, 503, { error: 'Portal administrator access is not configured.' });
+    return null;
+  }
+
   if (!process.env.NEON_AUTH_BASE_URL || !process.env.NEON_AUTH_COOKIE_SECRET) {
     send(response, 503, { error: 'Authentication is not configured for this deployment.' });
     return null;
@@ -128,6 +145,11 @@ async function requireAuthenticatedUser(request, response) {
     send(response, 401, { error: 'Authentication is required to access the order database.' });
     return null;
   }
+
+  if (!isAdminUser(user)) {
+    send(response, 403, { error: 'This portal is restricted to its designated administrator.' });
+    return null;
+  }
   return user;
 }
 
@@ -153,6 +175,11 @@ export default async function handler(request, response) {
       return;
     }
 
+    if (request.method === 'GET' && resource === 'access' && !id) {
+      send(response, 200, { authorized: true });
+      return;
+    }
+
     if (request.method === 'GET' && resource === 'state' && !id) {
       send(response, 200, await productionStore.getState());
       return;
@@ -175,11 +202,20 @@ export default async function handler(request, response) {
 
     if (request.method === 'PUT' && resource === 'orders' && id) {
       const order = await readBody(request);
-      if (decodeURIComponent(id) !== order?.id) {
-        send(response, 400, { error: 'The order URL and request body do not match.' });
+      if (!order || typeof order !== 'object' || Array.isArray(order)) {
+        send(response, 400, { error: 'A valid order payload is required.' });
         return;
       }
-      send(response, 200, await productionStore.updateOrder(order));
+
+      // The route identifies the resource being updated. Canonicalizing the ID
+      // here avoids blocking stage updates from older records whose JSON ID was
+      // serialized with a different case or incidental whitespace.
+      const orderId = orderIdFromPath(id);
+      if (!orderId) {
+        send(response, 400, { error: 'An order ID is required.' });
+        return;
+      }
+      send(response, 200, await productionStore.updateOrder({ ...order, id: orderId }));
       return;
     }
 

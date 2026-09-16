@@ -1,4 +1,5 @@
 import { handleAuthProxyRequest } from '@neondatabase/auth/server';
+import { getAdminEmail, isAdminEmail, requiresAdminEmail } from '../../lib/admin-access.js';
 
 export const config = {
   api: {
@@ -27,7 +28,7 @@ function authPathFrom(request) {
   return pathname.replace(/^\/api\/auth\/?/, '');
 }
 
-function toFetchRequest(request, path) {
+function toFetchRequest(request, path, body) {
   const protocol = request.headers['x-forwarded-proto'] || 'https';
   const host = request.headers.host || 'localhost';
   const url = new URL(request.url || '/', `${protocol}://${host}`);
@@ -37,12 +38,49 @@ function toFetchRequest(request, path) {
     headers: requestHeaders(request.headers),
   };
 
-  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+  if (body !== undefined) {
+    init.body = body;
+    init.duplex = 'half';
+  } else if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
     init.body = request;
     init.duplex = 'half';
   }
 
   return new Request(url, init);
+}
+
+async function readRequestBody(request) {
+  if (Buffer.isBuffer(request.body)) return request.body;
+  if (typeof request.body === 'string') return Buffer.from(request.body);
+
+  const chunks = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+async function validateEmailRequest(request, path, response) {
+  if (!requiresAdminEmail(path)) return undefined;
+
+  if (!getAdminEmail()) {
+    response.status(503).json({ error: 'Portal administrator access is not configured.' });
+    return null;
+  }
+
+  const body = await readRequestBody(request);
+  let email = '';
+  try {
+    email = JSON.parse(body.toString('utf8') || '{}').email;
+  } catch {
+    response.status(400).json({ error: 'A valid email request body is required.' });
+    return null;
+  }
+
+  if (!isAdminEmail(email)) {
+    response.status(403).json({ error: 'This portal is restricted to its designated administrator.' });
+    return null;
+  }
+
+  return body;
 }
 
 async function writeResponse(response, upstream) {
@@ -62,8 +100,11 @@ export default async function handler(request, response) {
   }
 
   const path = authPathFrom(request);
+  const body = await validateEmailRequest(request, path, response);
+  if (body === null) return;
+
   const upstream = await handleAuthProxyRequest({
-    request: toFetchRequest(request, path),
+    request: toFetchRequest(request, path, body),
     path,
     baseUrl: process.env.NEON_AUTH_BASE_URL,
     cookieSecret: process.env.NEON_AUTH_COOKIE_SECRET,

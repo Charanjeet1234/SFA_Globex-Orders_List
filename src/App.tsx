@@ -98,6 +98,8 @@ export default function App() {
   const [alerts, setAlerts] = useState<AlertNotification[]>(INITIAL_ALERTS);
   const [currentUser, setCurrentUser] = useState<UserProfile>(INITIAL_USERS[0]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAccessChecking, setIsAccessChecking] = useState(false);
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
 
   // Search & Year Filters
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -127,24 +129,53 @@ export default function App() {
     const authUser = neonSession?.user;
     if (!authUser) {
       localStorage.removeItem(SESSION_STORAGE_KEY);
+      setIsAccessChecking(false);
       setIsAuthenticated(false);
       return;
     }
 
-    const existingUser = INITIAL_USERS.find((user) => user.email === authUser.email);
-    setCurrentUser(existingUser || {
-      id: authUser.id,
-      username: authUser.email?.split('@')[0] || 'user',
-      name: authUser.name || authUser.email || 'SFA Globex User',
-      email: authUser.email || '',
-      role: 'auditor',
-      roleTitle: 'Authenticated Portal User',
-      mfaEnabled: false,
-      mfaVerified: true,
-      lastLogin: new Date().toISOString(),
-    });
-    saveSession(authUser.id);
-    setIsAuthenticated(true);
+    let isCurrent = true;
+    setAuthMessage(null);
+    setIsAccessChecking(true);
+
+    const verifyPortalAccess = async () => {
+      try {
+        const accessResponse = await fetch('/api/access', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        if (!accessResponse.ok) throw new Error('Administrator access was not approved.');
+
+        if (!isCurrent) return;
+        const existingUser = INITIAL_USERS.find((user) => user.email === authUser.email);
+        setCurrentUser(existingUser || {
+          id: authUser.id,
+          username: authUser.email?.split('@')[0] || 'admin',
+          name: authUser.name || authUser.email || 'Portal Administrator',
+          email: authUser.email || '',
+          role: 'owner',
+          roleTitle: 'Portal Administrator',
+          mfaEnabled: false,
+          mfaVerified: true,
+          lastLogin: new Date().toISOString(),
+        });
+        saveSession(authUser.id);
+        setIsAuthenticated(true);
+      } catch {
+        if (!isCurrent) return;
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        setIsAuthenticated(false);
+        setAuthMessage('This portal is restricted to its designated administrator.');
+        void authClient.signOut();
+      } finally {
+        if (isCurrent) setIsAccessChecking(false);
+      }
+    };
+
+    void verifyPortalAccess();
+    return () => {
+      isCurrent = false;
+    };
   }, [isAuthLoading, neonSession]);
 
   useEffect(() => {
@@ -532,7 +563,7 @@ export default function App() {
     void authClient.signOut();
   };
 
-  if (isAuthLoading) {
+  if (isAuthLoading || isAccessChecking) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans">
         <div className="text-center space-y-3">
@@ -564,6 +595,11 @@ export default function App() {
           </div>
 
           <div className="px-5 py-6 sm:px-6">
+            {authMessage && (
+              <div role="alert" className="mb-4 rounded-xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-center text-xs font-semibold leading-relaxed text-amber-100">
+                {authMessage}
+              </div>
+            )}
             <p className="mb-5 text-center text-xs leading-relaxed text-slate-400">
               Use your email address as your username. Create an account, sign in with a password, use Google, or reset a forgotten password.
             </p>

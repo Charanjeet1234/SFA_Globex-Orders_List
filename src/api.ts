@@ -41,10 +41,19 @@ export const databaseApi = {
     method: 'POST',
     body: JSON.stringify(order),
   }),
-  updateOrder: (order: Order) => request<DatabaseState>(`/api/orders/${encodeURIComponent(order.id)}`, {
-    method: 'PUT',
-    body: JSON.stringify(order),
-  }),
+  updateOrder: (order: Order) => {
+    const orderId = String(order?.id || '').trim();
+    if (!orderId) {
+      return Promise.reject(new Error('An order ID is required to save this change.'));
+    }
+
+    return request<DatabaseState>(`/api/orders/${encodeURIComponent(orderId)}`, {
+      method: 'PUT',
+      // Keep the route and payload on the same canonical ID. This also repairs
+      // legacy records that were saved with accidental surrounding whitespace.
+      body: JSON.stringify({ ...order, id: orderId }),
+    });
+  },
   deleteOrder: (orderId: string) => request<DatabaseState>(`/api/orders/${encodeURIComponent(orderId)}`, {
     method: 'DELETE',
   }),

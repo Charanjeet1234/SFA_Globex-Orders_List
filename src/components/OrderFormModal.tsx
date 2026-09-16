@@ -115,6 +115,9 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    const normalizedOrderNumber = orderNumber.trim().toUpperCase();
+    if (!normalizedOrderNumber) return;
+
     const selectedCompany = companies.find(c => c.id === companyId) || companies[0] || {
       id: 'comp-general',
       name: 'Trade Buyer LLC',
@@ -129,7 +132,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
       pi_issued: { 
         stage: 'pi_issued', 
         completedAt: nowISO, 
-        referenceNumber: `PI-${orderNumber}`,
+        referenceNumber: `PI-${normalizedOrderNumber}`,
         notes: isWaitingForBuyerPI 
           ? 'Only PI issued from SFA Globex FZCO; waiting for signed PI from buyer.'
           : 'PI issued and submitted to buyer.',
@@ -138,7 +141,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
       pi_signed: { 
         stage: 'pi_signed',
         completedAt: !isWaitingForBuyerPI ? nowISO : undefined,
-        referenceNumber: !isWaitingForBuyerPI ? `PI-${orderNumber}-SIGNED` : undefined,
+        referenceNumber: !isWaitingForBuyerPI ? `PI-${normalizedOrderNumber}-SIGNED` : undefined,
         notes: !isWaitingForBuyerPI ? `Signed PI received from ${selectedCompany.name}` : undefined,
       },
       advance_received: { stage: 'advance_received' },
@@ -158,12 +161,12 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
       };
     }
 
-    const checksumPayload = `${orderNumber}:${selectedCompany.name}:${totalAmountUSD}:${balancePaymentUSD}:${nowISO}`;
+    const checksumPayload = `${normalizedOrderNumber}:${selectedCompany.name}:${totalAmountUSD}:${balancePaymentUSD}:${nowISO}`;
     const hash = await computeSHA256(checksumPayload);
 
     const newOrder: Order = {
-      id: orderNumber.toLowerCase(),
-      orderNumber,
+      id: normalizedOrderNumber.toLowerCase(),
+      orderNumber: normalizedOrderNumber,
       companyId: selectedCompany.id,
       companyName: selectedCompany.name,
       productName,

@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getAdminEmail, isAdminEmail, isAdminUser, requiresAdminEmail } from './lib/admin-access.js';
 
 const projectDirectory = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(projectDirectory, '.env.local'), quiet: true });
@@ -58,6 +59,17 @@ function normalizeTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? now() : parsed.toISOString();
 }
 
+function orderIdFromPath(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    return decodeURIComponent(raw).trim();
+  } catch {
+    throw new Error('The order URL contains an invalid order ID.');
+  }
+}
+
 function requestHeaders(headers) {
   const result = new Headers();
   for (const [name, value] of Object.entries(headers)) {
@@ -75,7 +87,7 @@ function authPathFrom(request) {
   return url.pathname.replace(/^\/api\/auth\/?/, '');
 }
 
-function toAuthFetchRequest(request, path) {
+function toAuthFetchRequest(request, path, body) {
   const protocol = request.headers['x-forwarded-proto'] || request.protocol || 'http';
   const host = request.headers.host || 'localhost';
   const url = new URL(request.originalUrl || request.url || '/', `${protocol}://${host}`);
@@ -86,12 +98,49 @@ function toAuthFetchRequest(request, path) {
     headers: requestHeaders(request.headers),
   };
 
-  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+  if (body !== undefined) {
+    init.body = body;
+    init.duplex = 'half';
+  } else if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
     init.body = request;
     init.duplex = 'half';
   }
 
   return new Request(url, init);
+}
+
+async function readAuthRequestBody(request) {
+  if (Buffer.isBuffer(request.body)) return request.body;
+  if (typeof request.body === 'string') return Buffer.from(request.body);
+
+  const chunks = [];
+  for await (const chunk of request) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+async function validateAdminEmailRequest(request, path, response) {
+  if (!requiresAdminEmail(path)) return undefined;
+
+  if (!getAdminEmail()) {
+    response.status(503).json({ error: 'Portal administrator access is not configured.' });
+    return null;
+  }
+
+  const body = await readAuthRequestBody(request);
+  let email = '';
+  try {
+    email = JSON.parse(body.toString('utf8') || '{}').email;
+  } catch {
+    response.status(400).json({ error: 'A valid email request body is required.' });
+    return null;
+  }
+
+  if (!isAdminEmail(email)) {
+    response.status(403).json({ error: 'This portal is restricted to its designated administrator.' });
+    return null;
+  }
+
+  return body;
 }
 
 function copyAuthResponse(response, upstream) {
@@ -237,8 +286,10 @@ app.all('/api/auth/*', async (request, response, next) => {
     }
 
     const path = authPathFrom(request);
+    const body = await validateAdminEmailRequest(request, path, response);
+    if (body === null) return;
     const upstream = await handleAuthProxyRequest({
-      request: toAuthFetchRequest(request, path),
+      request: toAuthFetchRequest(request, path, body),
       path,
       baseUrl: process.env.NEON_AUTH_BASE_URL,
       cookieSecret: process.env.NEON_AUTH_COOKIE_SECRET,
@@ -262,9 +313,18 @@ app.use('/api', async (request, response, next) => {
       return;
     }
 
+    if (!getAdminEmail()) {
+      response.status(503).json({ error: 'Portal administrator access is not configured.' });
+      return;
+    }
+
     const user = await getAuthenticatedUser(request, response);
     if (!user) {
       response.status(401).json({ error: 'Authentication is required to access the local order database.' });
+      return;
+    }
+    if (!isAdminUser(user)) {
+      response.status(403).json({ error: 'This portal is restricted to its designated administrator.' });
       return;
     }
     response.locals.user = user;
@@ -272,6 +332,10 @@ app.use('/api', async (request, response, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.get('/api/access', (_request, response) => {
+  response.json({ authorized: true });
 });
 
 app.get('/api/state', (_request, response) => {
@@ -312,12 +376,17 @@ app.post('/api/orders', (request, response, next) => {
 
 app.put('/api/orders/:id', (request, response, next) => {
   try {
-    if (request.params.id !== request.body?.id) {
-      response.status(400).json({ error: 'The order URL and request body do not match.' });
+    if (!request.body || typeof request.body !== 'object' || Array.isArray(request.body)) {
+      response.status(400).json({ error: 'A valid order payload is required.' });
+      return;
+    }
+    const orderId = orderIdFromPath(request.params.id);
+    if (!orderId) {
+      response.status(400).json({ error: 'An order ID is required.' });
       return;
     }
     database.transaction(() => {
-      upsertOrder(request.body);
+      upsertOrder({ ...request.body, id: orderId });
       refreshCompanySummaries();
     })();
     response.json(getState());
