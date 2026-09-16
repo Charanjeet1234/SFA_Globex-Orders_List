@@ -1,3 +1,4 @@
+import { normalizeOrderPayments, receivedPaymentUSD } from '../lib/order-payments.js';
 import React, { useState, useEffect } from 'react';
 import { 
   Navbar 
@@ -57,6 +58,7 @@ import {
 } from './utils/encryption';
 import { databaseApi, DatabaseState } from './api';
 import { authClient } from './auth';
+const sessionAuth = authClient;
 
 const LEGACY_STORAGE_KEY_ORDERS = 'sfa_globex_orders_v2';
 const LEGACY_STORAGE_KEY_COMPANIES = 'sfa_globex_companies_v2';
@@ -88,7 +90,7 @@ function saveSession(userId: string): StoredSession {
 }
 
 export default function App() {
-  const { data: neonSession, isPending: isAuthLoading } = authClient.useSession();
+  const { data: neonSession, isPending: isAuthLoading } = sessionAuth.useSession();
   const [orders, setOrders] = useState<Order[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -166,7 +168,7 @@ export default function App() {
         localStorage.removeItem(SESSION_STORAGE_KEY);
         setIsAuthenticated(false);
         setAuthMessage('This portal is restricted to its designated administrator.');
-        void authClient.signOut();
+        void sessionAuth.signOut();
       } finally {
         if (isCurrent) setIsAccessChecking(false);
       }
@@ -224,7 +226,7 @@ export default function App() {
     const endSession = () => {
       localStorage.removeItem(SESSION_STORAGE_KEY);
       setIsAuthenticated(false);
-      void authClient.signOut();
+      void sessionAuth.signOut();
     };
 
     const scheduleLogout = (expiresAt: number) => {
@@ -309,6 +311,7 @@ export default function App() {
 
   // Update order (e.g. stage transition or payment balance update)
   const handleUpdateOrder = async (updated: Order) => {
+    updated = normalizeOrderPayments(updated);
     try {
       const state = await databaseApi.updateOrder(updated);
       setOrders(state.orders);
@@ -332,6 +335,7 @@ export default function App() {
 
   // Amend existing order (Full update of products, rates, quantities, PI status)
   const handleAmendOrder = async (amendedOrder: Order) => {
+    amendedOrder = normalizeOrderPayments(amendedOrder);
     try {
       const state = await databaseApi.updateOrder(amendedOrder);
       setOrders(state.orders);
@@ -528,7 +532,7 @@ export default function App() {
   const handleExecutivePDF = () => {
     const totalVolumeUSD = orders.reduce((sum, o) => sum + o.totalAmountUSD, 0);
     const totalVolumeAED = orders.reduce((sum, o) => sum + o.totalAmountAED, 0);
-    const totalAdvanceReceivedUSD = orders.reduce((sum, o) => sum + o.advancePaymentUSD, 0);
+    const totalAdvanceReceivedUSD = orders.reduce((sum, o) => sum + receivedPaymentUSD(o), 0);
     const totalBalanceOutstandingUSD = orders.reduce((sum, o) => sum + o.balancePaymentUSD, 0);
     const completedCount = orders.filter(o => o.isCompleted || o.currentStage === 'bl_surrender').length;
     const wentThroughCount = orders.filter(o => o.currentStage !== 'pi_issued' && o.currentStage !== 'bl_surrender').length;
@@ -560,7 +564,7 @@ export default function App() {
   const handleLockSession = () => {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     setIsAuthenticated(false);
-    void authClient.signOut();
+    void sessionAuth.signOut();
   };
 
   if (isAuthLoading || isAccessChecking) {
@@ -600,10 +604,10 @@ export default function App() {
                 {authMessage}
               </div>
             )}
-            <p className="mb-5 text-center text-xs leading-relaxed text-slate-400">
-              Use your email address as your username. Create an account, sign in with a password, use Google, or reset a forgotten password.
-            </p>
-            <AuthView pathname={window.location.pathname} className="mx-auto max-w-none border-0 bg-transparent p-0 shadow-none" />
+              <p className="mb-5 text-center text-xs leading-relaxed text-slate-400">
+                Use your email address as your username. Create an account, sign in with a password, use Google, or reset a forgotten password.
+              </p>
+              <AuthView pathname={window.location.pathname} className="mx-auto max-w-none border-0 bg-transparent p-0 shadow-none" />
           </div>
 
           <div className="border-t border-slate-800 bg-slate-950/40 px-6 py-3 text-center text-[10px] font-medium tracking-wide text-slate-500">

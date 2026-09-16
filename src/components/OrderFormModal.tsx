@@ -1,3 +1,4 @@
+import { hasAdvanceReceived } from '../../lib/order-payments.js';
 import React, { useState, useEffect } from "react";
 import {
   X,
@@ -93,8 +94,8 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
       : "0.0";
 
   // Balance Payment: Full Amount - Advance Payment
-  const balancePaymentUSD = Math.max(0, totalAmountUSD - advancePaymentUSD);
-  const balancePaymentAED = Math.max(0, totalAmountAED - advancePaymentAED);
+  const balancePaymentUSD = Math.max(0, totalAmountUSD - (hasAdvanceReceived({ currentStage: initialStage }) ? advancePaymentUSD : 0));
+  const balancePaymentAED = Math.max(0, totalAmountAED - (hasAdvanceReceived({ currentStage: initialStage }) ? advancePaymentAED : 0));
 
   // Sync initial company if available
   useEffect(() => {
@@ -177,7 +178,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
         stage: "advance_received",
         completedAt: nowISO,
         referenceNumber: `DEP-${Date.now().toString().slice(-6)}`,
-        notes: `Advance deposit of ${formatUSD(advancePaymentUSD)} verified upon order booking.`,
+        notes: `Advance deposit of ${formatAED(advancePaymentAED)} verified upon order booking.`,
       };
     }
 
@@ -683,15 +684,15 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
               {/* Real-time Advance Values Box */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-xs">
                 <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
-                  <span className="text-slate-500">Advance (USD):</span>
+                  <span className="text-slate-500">Advance (AED):</span>
                   <span className="font-bold text-slate-900">
-                    {formatUSD(advancePaymentUSD)}
+                    {formatAED(advancePaymentAED)}
                   </span>
                 </div>
                 <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
-                  <span className="text-slate-500">Advance (AED):</span>
+                  <span className="text-slate-500">Advance (USD):</span>
                   <span className="font-mono font-bold text-slate-900">
-                    {formatAED(advancePaymentAED)}
+                    {formatUSD(advancePaymentUSD)}
                   </span>
                 </div>
               </div>
@@ -704,30 +705,30 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                   Total Full Amount
                 </div>
                 <div className="text-base font-black text-slate-900 mt-0.5">
-                  {formatUSD(totalAmountUSD)}
+                  {formatAED(totalAmountAED)}
                 </div>
                 <div className="text-xs font-semibold text-slate-600 font-mono">
-                  {formatAED(totalAmountAED)}
+                  {formatUSD(totalAmountUSD)}
                 </div>
                 <div className="text-[10px] text-slate-400 mt-1 font-mono leading-tight space-y-0.5 border-t border-slate-100 pt-1">
                   <div>
-                    Qty × USD: {quantity} {unit} × {formatUSD(unitPriceUSD)}
+                    Qty × AED: {quantity} {unit} × {formatAED(unitPriceAED)}
                   </div>
                   <div>
-                    Qty × AED: {quantity} {unit} × {formatAED(unitPriceAED)}
+                    Qty × USD: {quantity} {unit} × {formatUSD(unitPriceUSD)}
                   </div>
                 </div>
               </div>
 
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
                 <div className="text-[10px] font-bold text-emerald-800 uppercase">
-                  Advance Deposit
+                  {hasAdvanceReceived({ currentStage: initialStage }) ? 'Advance Paid' : 'Advance'}
                 </div>
                 <div className="text-base font-black text-emerald-700 mt-0.5">
-                  {formatUSD(advancePaymentUSD)}
+                  {formatAED(advancePaymentAED)}
                 </div>
                 <div className="text-xs font-medium text-emerald-800/80">
-                  {formatAED(advancePaymentAED)}
+                  {formatUSD(advancePaymentUSD)}
                 </div>
               </div>
 
@@ -735,14 +736,14 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                 <div className="text-[10px] font-bold text-amber-900 uppercase flex items-center justify-between">
                   <span>Balance Due</span>
                   <span className="text-[9px] font-mono font-semibold">
-                    Full - Advance
+                    {hasAdvanceReceived({ currentStage: initialStage }) ? 'Full - Advance' : 'Full Amount'}
                   </span>
                 </div>
                 <div className="text-base font-black text-amber-800 mt-0.5">
-                  {formatUSD(balancePaymentUSD)}
+                  {formatAED(balancePaymentAED)}
                 </div>
                 <div className="text-xs font-medium text-amber-900/80">
-                  {formatAED(balancePaymentAED)}
+                  {formatUSD(balancePaymentUSD)}
                 </div>
               </div>
             </div>

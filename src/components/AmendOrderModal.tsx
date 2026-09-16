@@ -1,3 +1,4 @@
+import { normalizeOrderPayments, hasAdvanceReceived } from '../../lib/order-payments.js';
 import React, { useState, useEffect } from 'react';
 import { 
   X, 
@@ -97,8 +98,9 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
   const advancePaymentAED = convertUsdToAed(advancePaymentUSD, exchangeRate);
   
   // Balance calculation: Full Amount - Advance Payment
-  const balancePaymentUSD = Math.max(0, totalAmountUSD - advancePaymentUSD);
-  const balancePaymentAED = Math.max(0, totalAmountAED - advancePaymentAED);
+  const { balancePaymentUSD, balancePaymentAED } = normalizeOrderPayments({
+    ...order, currentStage, totalAmountUSD, totalAmountAED, advancePaymentUSD, advancePaymentAED,
+  });
 
   // Handle stage change
   const handleStageSelect = (stage: OrderStage) => {
@@ -571,18 +573,18 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
               {/* Real-time Advance Values Box */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-xs">
                 <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
-                  <span className="text-slate-500">Amended Advance (USD):</span>
-                  <span className="font-bold text-slate-900">{formatUSD(advancePaymentUSD)}</span>
+                  <span className="text-slate-500">Amended Advance (AED):</span>
+                  <span className="font-bold text-slate-900">{formatAED(advancePaymentAED)}</span>
                 </div>
                 <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between">
-                  <span className="text-slate-500">Amended Advance (AED):</span>
-                  <span className="font-mono font-bold text-slate-900">{formatAED(advancePaymentAED)}</span>
+                  <span className="text-slate-500">Amended Advance (USD):</span>
+                  <span className="font-mono font-bold text-slate-900">{formatUSD(advancePaymentUSD)}</span>
                 </div>
               </div>
 
               {order.advancePaymentUSD !== advancePaymentUSD && (
                 <div className="text-[11px] text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 flex items-center justify-between">
-                  <span>Previous Advance: {formatUSD(order.advancePaymentUSD)} ({formatAED(order.advancePaymentAED)})</span>
+                  <span>Previous Advance: {formatAED(order.advancePaymentAED)} ({formatUSD(order.advancePaymentUSD)})</span>
                   <span className="font-bold">
                     {advancePaymentUSD > order.advancePaymentUSD ? '+' : ''}{formatUSD(advancePaymentUSD - order.advancePaymentUSD)}
                   </span>
@@ -599,22 +601,22 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700">
                 <span className="text-slate-400 block text-[11px]">Total Order Amount</span>
-                <span className="text-base font-black text-white block mt-0.5">{formatUSD(totalAmountUSD)}</span>
-                <span className="text-[11px] text-slate-300 font-mono block">{formatAED(totalAmountAED)}</span>
+                <span className="text-base font-black text-white block mt-0.5">{formatAED(totalAmountAED)}</span>
+                <span className="text-[11px] text-slate-300 font-mono block">{formatUSD(totalAmountUSD)}</span>
                 <div className="text-[9px] text-slate-400 mt-1 font-mono leading-tight space-y-0.5 border-t border-slate-700/60 pt-1">
-                  <div>Qty × USD: {quantity} {unit} × {formatUSD(unitPriceUSD)}</div>
                   <div>Qty × AED: {quantity} {unit} × {formatAED(unitPriceAED)}</div>
+                  <div>Qty × USD: {quantity} {unit} × {formatUSD(unitPriceUSD)}</div>
                 </div>
               </div>
               <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700">
                 <span className="text-slate-400 block text-[11px]">Advance Received/Agreed</span>
-                <span className="text-base font-black text-emerald-400 block mt-0.5">{formatUSD(advancePaymentUSD)}</span>
-                <span className="text-[11px] text-slate-400 font-mono">{formatAED(advancePaymentAED)}</span>
+                <span className="text-base font-black text-emerald-400 block mt-0.5">{formatAED(advancePaymentAED)}</span>
+                <span className="text-[11px] text-slate-400 font-mono">{formatUSD(advancePaymentUSD)}</span>
               </div>
               <div className="bg-slate-800/80 p-3 rounded-lg border border-amber-500/40">
-                <span className="text-amber-300 block text-[11px] font-semibold">Balance Payment (Full - Advance)</span>
-                <span className="text-base font-black text-amber-400 block mt-0.5">{formatUSD(balancePaymentUSD)}</span>
-                <span className="text-[11px] text-slate-400 font-mono">{formatAED(balancePaymentAED)}</span>
+                <span className="text-amber-300 block text-[11px] font-semibold">Balance Payment ({hasAdvanceReceived({ ...order, currentStage }) ? 'Full - Advance' : 'Full Amount'})</span>
+                <span className="text-base font-black text-amber-400 block mt-0.5">{formatAED(balancePaymentAED)}</span>
+                <span className="text-[11px] text-slate-400 font-mono">{formatUSD(balancePaymentUSD)}</span>
               </div>
             </div>
           </div>

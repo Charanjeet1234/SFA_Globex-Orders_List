@@ -118,8 +118,8 @@ export interface Order {
   totalAmountAED: number;
   advancePaymentUSD: number;
   advancePaymentAED: number;
-  balancePaymentUSD: number; // totalAmountUSD - advancePaymentUSD
-  balancePaymentAED: number; // totalAmountAED - advancePaymentAED
+  balancePaymentUSD: number; // Total less confirmed payments; planned advance is not deducted.
+  balancePaymentAED: number; // Total less confirmed payments in AED.
 
   // Lifecycle & Stages
   currentStage: OrderStage;

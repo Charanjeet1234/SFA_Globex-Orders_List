@@ -1,3 +1,4 @@
+import { receivedPaymentUSD, receivedPaymentAED } from '../../lib/order-payments.js';
 import React, { useState } from 'react';
 import { 
   TrendingUp, 
@@ -37,7 +38,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   onOpenOrderForm,
   onSendReminder,
 }) => {
-  const [selectedCurrency, setSelectedCurrency] = useState<'USD' | 'AED'>('USD');
+  const [selectedCurrency, setSelectedCurrency] = useState<'USD' | 'AED'>('AED');
   const [drilldownCompany, setDrilldownCompany] = useState<string | null>(null);
 
   // Core KPI Calculations
@@ -58,13 +59,16 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   // Financial totals
   const totalVolumeUSD = orders.reduce((sum, o) => sum + o.totalAmountUSD, 0);
   const totalVolumeAED = orders.reduce((sum, o) => sum + o.totalAmountAED, 0);
-  const totalAdvanceReceivedUSD = orders.reduce((sum, o) => sum + o.advancePaymentUSD, 0);
+  const totalAdvanceReceivedUSD = orders.reduce((sum, o) => sum + receivedPaymentUSD(o), 0);
   const totalBalanceOutstandingUSD = orders.reduce((sum, o) => sum + o.balancePaymentUSD, 0);
   const totalBalanceOutstandingAED = orders.reduce((sum, o) => sum + o.balancePaymentAED, 0);
 
   // Overdue count & sum
   const overdueOrders = orders.filter(o => o.isOverdue && o.balancePaymentUSD > 0);
   const totalOverdueUSD = overdueOrders.reduce((sum, o) => sum + o.balancePaymentUSD, 0);
+
+  const totalOverdueAED = overdueOrders.reduce((sum, o) => sum + o.balancePaymentAED, 0);
+  const totalAdvanceReceivedAED = orders.reduce((sum, o) => sum + receivedPaymentAED(o), 0);
 
   // Month-wise unique list
   const months: string[] = Array.from(new Set<string>(orders.map(o => o.month))).sort();
@@ -75,7 +79,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
     const orderCount = monthOrders.length;
     const projectedRevenueUSD = monthOrders.reduce((sum, o) => sum + o.totalAmountUSD, 0);
     const projectedRevenueAED = monthOrders.reduce((sum, o) => sum + o.totalAmountAED, 0);
-    const confirmedCashUSD = monthOrders.reduce((sum, o) => sum + o.advancePaymentUSD, 0);
+    const confirmedCashUSD = monthOrders.reduce((sum, o) => sum + receivedPaymentUSD(o), 0);
     const pendingBalanceUSD = monthOrders.reduce((sum, o) => sum + o.balancePaymentUSD, 0);
 
     // Format label like "Aug 2026"
@@ -90,6 +94,8 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       projectedRevenueUSD,
       projectedRevenueAED,
       confirmedCashUSD,
+      confirmedCashAED: monthOrders.reduce((sum, o) => sum + receivedPaymentAED(o), 0),
+      pendingBalanceAED: monthOrders.reduce((sum, o) => sum + o.balancePaymentAED, 0),
       pendingBalanceUSD,
     };
   });
@@ -133,20 +139,20 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
             {/* Currency toggle */}
             <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
               <button
-                onClick={() => setSelectedCurrency('USD')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  selectedCurrency === 'USD' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                USD ($)
-              </button>
-              <button
                 onClick={() => setSelectedCurrency('AED')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
                   selectedCurrency === 'AED' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
                 }`}
               >
                 AED (د.إ)
+              </button>
+              <button
+                onClick={() => setSelectedCurrency('USD')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                  selectedCurrency === 'USD' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                USD ($)
               </button>
             </div>
 
@@ -176,7 +182,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                     URGENT: {overdueOrders.length} Order(s) With Overdue Balance Payments
                   </h3>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/30 text-rose-300">
-                    Total: {formatUSD(totalOverdueUSD)} / {formatAED(totalOverdueUSD * 3.6725)}
+                    Total: {formatAED(totalOverdueAED)} / {formatUSD(totalOverdueUSD)}
                   </span>
                 </div>
                 <p className="text-xs text-rose-300/80 mt-1">
@@ -289,7 +295,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
             <span>Advance Inflow</span>
-            <span className="font-semibold text-slate-800">{formatUSD(totalAdvanceReceivedUSD)}</span>
+            <span className="font-semibold text-slate-800">{formatAED(totalAdvanceReceivedAED)} <span className="text-xs font-normal text-slate-500">({formatUSD(totalAdvanceReceivedUSD)})</span></span>
           </div>
         </div>
 
@@ -311,7 +317,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           </div>
           <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
             <span>Overdue Amount</span>
-            <span className="font-semibold text-rose-600">{formatUSD(totalOverdueUSD)}</span>
+            <span className="font-semibold text-rose-600">{formatAED(totalOverdueAED)} <span className="text-xs font-normal text-slate-500">({formatUSD(totalOverdueUSD)})</span></span>
           </div>
         </div>
 
@@ -349,8 +355,8 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
               <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                 <th className="py-3 px-4">Projection Month</th>
                 <th className="py-3 px-4">Order Volume</th>
-                <th className="py-3 px-4">Projected Revenue (USD)</th>
                 <th className="py-3 px-4">Projected Revenue (AED)</th>
+                <th className="py-3 px-4">Projected Revenue (USD)</th>
                 <th className="py-3 px-4">Confirmed Advance Inflow</th>
                 <th className="py-3 px-4">Pending Balance Pipeline</th>
                 <th className="py-3 px-4">Cash Settlement Progress</th>
@@ -376,16 +382,16 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                       </span>
                     </td>
                     <td className="py-3.5 px-4 font-extrabold text-slate-900">
-                      {formatUSD(p.projectedRevenueUSD)}
-                    </td>
-                    <td className="py-3.5 px-4 font-medium text-slate-700">
                       {formatAED(p.projectedRevenueAED)}
                     </td>
+                    <td className="py-3.5 px-4 font-medium text-slate-700">
+                      {formatUSD(p.projectedRevenueUSD)}
+                    </td>
                     <td className="py-3.5 px-4 font-semibold text-emerald-600">
-                      {formatUSD(p.confirmedCashUSD)}
+                      {formatAED(p.confirmedCashAED)} <span className="text-xs font-normal text-slate-500">({formatUSD(p.confirmedCashUSD)})</span>
                     </td>
                     <td className="py-3.5 px-4 font-semibold text-rose-600">
-                      {formatUSD(p.pendingBalanceUSD)}
+                      {formatAED(p.pendingBalanceAED)} <span className="text-xs font-normal text-slate-500">({formatUSD(p.pendingBalanceUSD)})</span>
                     </td>
                     <td className="py-3.5 px-4">
                       <div className="w-36">
@@ -487,7 +493,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                                 {mOrders.length} {mOrders.length === 1 ? 'Order' : 'Orders'}
                               </span>
                               <span className="text-[10px] font-semibold text-slate-600 mt-0.5">
-                                {formatUSD(mVolume)}
+                                {formatAED(mOrders.reduce((sum, o) => sum + o.totalAmountAED, 0))} ({formatUSD(mVolume)})
                               </span>
                             </div>
                           ) : (
@@ -498,9 +504,9 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                     })}
 
                     <td className="py-3.5 px-4 text-right font-extrabold text-slate-900">
-                      {formatUSD(companyTotalUSD)}
+                      {formatAED(companyOrders.reduce((sum, o) => sum + o.totalAmountAED, 0))}
                       <div className="text-[10px] text-slate-500 font-normal">
-                        {formatAED(companyTotalUSD * 3.6725)}
+                        {formatUSD(companyTotalUSD)}
                       </div>
                     </td>
                   </tr>
@@ -541,9 +547,9 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                       {order.productName}
                     </div>
                     <div className="mt-2 flex items-center justify-between text-xs pt-2 border-t border-slate-100">
-                      <span className="text-slate-500">Total: {formatUSD(order.totalAmountUSD)}</span>
+                      <span className="text-slate-500">Total: {formatAED(order.totalAmountAED)} <span className="text-xs font-normal text-slate-500">({formatUSD(order.totalAmountUSD)})</span></span>
                       <span className={`font-semibold ${order.balancePaymentUSD > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                        Bal: {formatUSD(order.balancePaymentUSD)}
+                        Bal: {formatAED(order.balancePaymentAED)} <span className="text-xs font-normal text-slate-500">({formatUSD(order.balancePaymentUSD)})</span>
                       </span>
                     </div>
                   </div>

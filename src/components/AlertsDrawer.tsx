@@ -134,7 +134,7 @@ Please remit payment via designated bank escrow account.`;
                     <div className="mt-2.5 p-2 rounded-xl bg-white/90 border border-slate-200/80 flex items-center justify-between font-mono">
                       <span className="text-[11px] font-bold text-slate-500">Balance Due:</span>
                       <span className="font-black text-rose-600 text-xs">
-                        {formatUSD(alert.amountUSD)} ({formatAED(alert.amountUSD * 3.6725)})
+                        {formatAED(alert.amountAED ?? alert.amountUSD * 3.6725)} ({formatUSD(alert.amountUSD)})
                       </span>
                     </div>
                   )}

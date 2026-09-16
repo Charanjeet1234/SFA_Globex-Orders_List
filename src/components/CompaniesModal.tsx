@@ -289,7 +289,7 @@ export const CompaniesModal: React.FC<CompaniesModalProps> = ({
                   <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5 text-xs text-slate-600">
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400">Total Booked Volume:</span>
-                      <span className="font-extrabold text-slate-900">{formatUSD(totalUSD)}</span>
+                      <span className="font-extrabold text-slate-900">{formatAED(companyOrders.reduce((sum, o) => sum + o.totalAmountAED, 0))} <span className="block text-right text-[10px] font-normal text-slate-500">{formatUSD(totalUSD)}</span></span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-slate-400">Payment Terms:</span>

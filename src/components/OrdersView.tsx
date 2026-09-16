@@ -1,3 +1,4 @@
+import { hasAdvanceReceived, receivedPaymentUSD } from '../../lib/order-payments.js';
 import React, { useState, useMemo } from 'react';
 import { 
   Search, 
@@ -491,7 +492,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         <div className="text-xs text-slate-600 mt-0.5">
                           Quantity: <strong className="text-slate-800">{order.quantity.toLocaleString()} {order.unit}</strong>
                           <span className="mx-2 text-slate-300">|</span>
-                          Unit Price: <span className="font-semibold text-slate-800">{formatUSD(order.unitPriceUSD)}</span> ({formatAED(order.unitPriceAED)})
+                          Unit Price: <span className="font-semibold text-slate-800">{formatAED(order.unitPriceAED)}</span> ({formatUSD(order.unitPriceUSD)})
                         </div>
                       </div>
 
@@ -520,32 +521,32 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                             Total Full Amount
                           </div>
                           <div className="text-sm font-black text-slate-900 mt-0.5">
-                            {formatUSD(order.totalAmountUSD)}
-                          </div>
-                          <div className="text-[11px] font-medium text-slate-500 font-mono">
                             {formatAED(order.totalAmountAED)}
                           </div>
+                          <div className="text-[11px] font-medium text-slate-500 font-mono">
+                            {formatUSD(order.totalAmountUSD)}
+                          </div>
                           <div className="text-[9px] text-slate-400 mt-1 font-mono leading-tight space-y-0.5 border-t border-slate-100 pt-1">
-                            <div>{order.quantity.toLocaleString()} {order.unit} × {formatUSD(order.unitPriceUSD)}</div>
                             <div>{order.quantity.toLocaleString()} {order.unit} × {formatAED(order.unitPriceAED)}</div>
+                            <div>{order.quantity.toLocaleString()} {order.unit} × {formatUSD(order.unitPriceUSD)}</div>
                           </div>
                         </div>
 
                         {/* Advance Received */}
                         <div className="p-2.5 rounded-lg bg-white border border-slate-200/80">
                           <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                            <span>Advance Paid</span>
+                            <span>{hasAdvanceReceived(order) ? 'Advance Paid' : 'Advance'}</span>
                             <span className="text-emerald-600 font-semibold">{advanceRatio}%</span>
                           </div>
                           <div className="text-sm font-black text-emerald-600 mt-0.5">
-                            {formatUSD(order.advancePaymentUSD)}
+                            {formatAED(order.advancePaymentAED)}
                           </div>
                           <div className="text-[11px] font-medium text-emerald-700 font-mono">
-                            {formatAED(order.advancePaymentAED)}
+                            {formatUSD(order.advancePaymentUSD)}
                           </div>
                         </div>
 
-                        {/* Balance Payment (Full - Advance) */}
+                        {/* Balance Payment */}
                         <div className={`p-2.5 rounded-lg border ${
                           order.balancePaymentUSD > 0
                             ? 'bg-amber-50/70 border-amber-200 text-amber-950'
@@ -554,16 +555,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           <div className="text-[10px] font-bold uppercase tracking-wider flex items-center justify-between">
                             <span>Balance Due</span>
                             <span className="text-[9px] font-bold px-1 rounded bg-white/70">
-                              Full - Advance
+                              {hasAdvanceReceived(order) ? 'Full - Advance' : 'Full Amount'}
                             </span>
                           </div>
                           <div className={`text-sm font-black mt-0.5 ${
                             order.balancePaymentUSD > 0 ? 'text-amber-700' : 'text-emerald-700'
                           }`}>
-                            {formatUSD(order.balancePaymentUSD)}
+                            {formatAED(order.balancePaymentAED)}
                           </div>
                           <div className="text-[11px] font-medium font-mono">
-                            {formatAED(order.balancePaymentAED)}
+                            {formatUSD(order.balancePaymentUSD)}
                           </div>
                         </div>
 
@@ -689,8 +690,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   <th className="py-3 px-4">Order ID & Year</th>
                   <th className="py-3 px-4">Buyer Company</th>
                   <th className="py-3 px-4">Product & Quantity</th>
-                  <th className="py-3 px-4">Total Amount (USD / AED)</th>
-                  <th className="py-3 px-4">Advance Paid</th>
+                  <th className="py-3 px-4">Total Amount (AED / USD)</th>
+                  <th className="py-3 px-4">Advance</th>
                   <th className="py-3 px-4">Balance Due</th>
                   <th className="py-3 px-4">Stage & Status</th>
                   <th className="py-3 px-4 text-right">Actions</th>
@@ -716,18 +717,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         <div className="text-[11px] text-slate-500">{order.quantity.toLocaleString()} {order.unit}</div>
                       </td>
                       <td className="py-3.5 px-4 font-extrabold text-slate-900">
-                        <div>{formatUSD(order.totalAmountUSD)}</div>
-                        <div className="text-[10px] text-slate-500 font-mono font-normal">{formatAED(order.totalAmountAED)}</div>
+                        <div>{formatAED(order.totalAmountAED)}</div>
+                        <div className="text-[10px] text-slate-500 font-mono font-normal">{formatUSD(order.totalAmountUSD)}</div>
                         <div className="text-[9px] text-slate-400 font-normal mt-0.5 font-mono">
-                          {order.quantity} {order.unit} × {formatAED(order.unitPriceAED)}
+                          {order.quantity} {order.unit} × {formatUSD(order.unitPriceUSD)}
                         </div>
                       </td>
                       <td className="py-3.5 px-4 font-semibold text-emerald-600">
-                        {formatUSD(order.advancePaymentUSD)}
+                        {formatAED(order.advancePaymentAED)}
+                        <div className="text-[10px] text-slate-500">{formatUSD(order.advancePaymentUSD)}</div>
+                        <div className="text-[10px]">{hasAdvanceReceived(order) ? 'Advance Paid' : 'Advance'}</div>
                       </td>
                       <td className="py-3.5 px-4 font-extrabold">
                         <span className={order.balancePaymentUSD > 0 ? 'text-amber-700' : 'text-emerald-700'}>
-                          {formatUSD(order.balancePaymentUSD)}
+                          {formatAED(order.balancePaymentAED)}
+                          <span className="block text-[10px] text-slate-500 font-normal">{formatUSD(order.balancePaymentUSD)}</span>
                         </span>
                         {order.isOverdue && (
                           <div className="text-[9px] font-bold text-rose-500">OVERDUE</div>

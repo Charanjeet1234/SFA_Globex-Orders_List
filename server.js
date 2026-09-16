@@ -1,3 +1,4 @@
+import { normalizeOrderPayments } from './lib/order-payments.js';
 import express from 'express';
 import Database from 'better-sqlite3';
 import { createServer as createViteServer } from 'vite';
@@ -181,7 +182,7 @@ async function getAuthenticatedUser(request, response) {
 function getState() {
   return {
     initialized: Boolean(database.prepare("SELECT 1 FROM app_metadata WHERE key = 'initialized'").get()),
-    orders: database.prepare('SELECT payload FROM orders ORDER BY updated_at DESC').all().map(readPayload),
+    orders: database.prepare('SELECT payload FROM orders ORDER BY updated_at DESC').all().map(readPayload).map(normalizeOrderPayments),
     companies: database.prepare('SELECT payload FROM companies ORDER BY name COLLATE NOCASE').all().map(readPayload),
     auditLogs: database.prepare('SELECT payload FROM audit_logs ORDER BY created_at DESC').all().map(readPayload),
   };
@@ -220,6 +221,7 @@ const upsertLogStatement = database.prepare(`
 `);
 
 function upsertOrder(order) {
+  order = normalizeOrderPayments(order);
   if (!order?.id || !order.orderNumber || !order.companyId) {
     throw new Error('An order id, order number, and company are required.');
   }
@@ -257,7 +259,7 @@ function refreshCompanySummaries() {
 }
 
 const replaceState = database.transaction(({ orders = [], companies = [], auditLogs = [] }) => {
-  replaceRows('orders', orders, {
+  replaceRows('orders', orders.map(normalizeOrderPayments), {
     sql: 'INSERT INTO orders (id, company_id, order_number, total_amount_usd, payload, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
     values: (order) => [order.id, order.companyId, order.orderNumber, Number(order.totalAmountUSD || 0), JSON.stringify(order), order.updatedAt || now()],
   });

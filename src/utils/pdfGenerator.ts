@@ -1,3 +1,4 @@
+import { hasAdvanceReceived } from '../../lib/order-payments.js';
 import jsPDF from 'jspdf';
 import { Order, ORDER_STAGES } from '../types';
 
@@ -151,11 +152,11 @@ export function generateOrderPDF(order: Order, generatedBy: string = 'System Adm
   doc.text(order.billOfLadingNumber || 'Awaiting Issuance', col2X + 35, currentY);
   currentY += 12;
 
-  // Section 2: Financial Valuation & Balance Payment (USD & AED)
+  // Section 2: Financial Valuation & Balance Payment (AED & USD)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text('2. MULTI-CURRENCY FINANCIAL BALANCES (USD & AED)', 14, currentY);
+  doc.text('2. MULTI-CURRENCY FINANCIAL BALANCES (AED & USD)', 14, currentY);
   currentY += 4;
   doc.line(14, currentY, pageWidth - 14, currentY);
   currentY += 4;
@@ -172,8 +173,8 @@ export function generateOrderPDF(order: Order, generatedBy: string = 'System Adm
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
   doc.text('FINANCIAL ITEM', 18, boxY + 6);
-  doc.text('US DOLLARS (USD)', 85, boxY + 6);
-  doc.text(`UAE DIRHAMS (AED @ ${order.exchangeRateUsdToAed || 3.6725})`, 138, boxY + 6);
+  doc.text('UAE DIRHAMS (AED)', 85, boxY + 6);
+  doc.text('US DOLLARS (USD)', 138, boxY + 6);
 
   doc.setDrawColor(226, 232, 240);
   doc.line(14, boxY + 8, pageWidth - 14, boxY + 8);
@@ -182,30 +183,30 @@ export function generateOrderPDF(order: Order, generatedBy: string = 'System Adm
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(15, 23, 42);
   doc.text(`Unit Price (per ${order.unit})`, 18, boxY + 14);
-  doc.text(formatUSD(order.unitPriceUSD), 85, boxY + 14);
-  doc.text(formatAED(order.unitPriceAED), 138, boxY + 14);
+  doc.text(formatUSD(order.unitPriceUSD), 138, boxY + 14);
+  doc.text(formatAED(order.unitPriceAED), 85, boxY + 14);
 
   // Row 2: Total Order Value (Quantity * Unit Price)
   doc.setFont('helvetica', 'bold');
   doc.text(`Total Full Amount (${order.quantity} ${order.unit} x Price)`, 18, boxY + 20);
-  doc.text(formatUSD(order.totalAmountUSD), 85, boxY + 20);
-  doc.text(formatAED(order.totalAmountAED), 138, boxY + 20);
+  doc.text(formatUSD(order.totalAmountUSD), 138, boxY + 20);
+  doc.text(formatAED(order.totalAmountAED), 85, boxY + 20);
 
   // Row 3: Advance Received
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(16, 185, 129); // emerald
-  doc.text('Advance Payment Received', 18, boxY + 26);
-  doc.text(`- ${formatUSD(order.advancePaymentUSD)}`, 85, boxY + 26);
-  doc.text(`- ${formatAED(order.advancePaymentAED)}`, 138, boxY + 26);
+  doc.text(hasAdvanceReceived(order) ? 'Advance Paid' : 'Advance (planned)', 18, boxY + 26);
+  doc.text(`${hasAdvanceReceived(order) ? '- ' : ''}${formatUSD(order.advancePaymentUSD)}`, 138, boxY + 26);
+  doc.text(`${hasAdvanceReceived(order) ? '- ' : ''}${formatAED(order.advancePaymentAED)}`, 85, boxY + 26);
 
   // Row 4: Balance Payment Due (Highlighted)
   doc.setFillColor(254, 242, 242);
   doc.rect(14, boxY + 29, pageWidth - 28, 9, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(order.balancePaymentUSD > 0 ? 185 : 22, order.balancePaymentUSD > 0 ? 28 : 101, order.balancePaymentUSD > 0 ? 28 : 52);
-  doc.text('BALANCE PAYMENT DUE (Full - Advance):', 18, boxY + 35);
-  doc.text(formatUSD(order.balancePaymentUSD), 85, boxY + 35);
-  doc.text(formatAED(order.balancePaymentAED), 138, boxY + 35);
+  doc.text('BALANCE PAYMENT DUE:', 18, boxY + 35);
+  doc.text(formatUSD(order.balancePaymentUSD), 138, boxY + 35);
+  doc.text(formatAED(order.balancePaymentAED), 85, boxY + 35);
 
   currentY = boxY + 46;
 
@@ -369,10 +370,12 @@ export function generateExecutiveSummaryPDF(
   doc.rect(106, y, cardW, cardH, 'F');
   doc.setFontSize(7.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('TOTAL BOOKED (USD)', 110, y + 6);
+  doc.text('TOTAL BOOKED (AED)', 110, y + 6);
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42);
-  doc.text(formatUSD(totalUSD), 110, y + 16);
+  doc.text(formatAED(totalAED), 110, y + 16);
+  doc.setFontSize(7);
+  doc.text(formatUSD(totalUSD), 110, y + 21);
 
   // Card 4
   doc.setFillColor(254, 242, 242);
@@ -382,7 +385,9 @@ export function generateExecutiveSummaryPDF(
   doc.text('OUTSTANDING BALANCE', 156, y + 6);
   doc.setFontSize(11);
   doc.setTextColor(185, 28, 28);
-  doc.text(formatUSD(pendingBalanceUSD), 156, y + 16);
+  doc.text(formatAED(orders.reduce((sum, o) => sum + o.balancePaymentAED, 0)), 156, y + 16);
+  doc.setFontSize(7);
+  doc.text(formatUSD(pendingBalanceUSD), 156, y + 21);
 
   y += cardH + 12;
 
@@ -402,7 +407,7 @@ export function generateExecutiveSummaryPDF(
   doc.text('ORDER #', 16, y + 4.5);
   doc.text('BUYER COMPANY', 42, y + 4.5);
   doc.text('PRODUCT', 88, y + 4.5);
-  doc.text('TOTAL (USD)', 128, y + 4.5);
+  doc.text('TOTAL (AED)', 128, y + 4.5);
   doc.text('BALANCE DUE', 154, y + 4.5);
   doc.text('STAGE', 182, y + 4.5);
   y += 6;
@@ -418,9 +423,9 @@ export function generateExecutiveSummaryPDF(
     doc.text(o.orderNumber, 16, y + 4.5);
     doc.text(o.companyName.slice(0, 22), 42, y + 4.5);
     doc.text(o.productName.slice(0, 20), 88, y + 4.5);
-    doc.text(formatUSD(o.totalAmountUSD), 128, y + 4.5);
+    doc.text(formatAED(o.totalAmountAED), 128, y + 4.5);
     doc.setTextColor(o.balancePaymentUSD > 0 ? 185 : 22, o.balancePaymentUSD > 0 ? 28 : 101, 28);
-    doc.text(formatUSD(o.balancePaymentUSD), 154, y + 4.5);
+    doc.text(formatAED(o.balancePaymentAED), 154, y + 4.5);
     doc.setTextColor(15, 23, 42);
     doc.text(o.currentStage.replace(/_/g, ' '), 182, y + 4.5);
     y += 6.5;

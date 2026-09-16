@@ -59,7 +59,7 @@ export const DeleteOrderModal: React.FC<DeleteOrderModalProps> = ({
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Total Value:</span>
-              <span className="font-bold text-slate-900">{formatUSD(order.totalAmountUSD)} ({formatAED(order.totalAmountAED)})</span>
+              <span className="font-bold text-slate-900">{formatAED(order.totalAmountAED)} ({formatUSD(order.totalAmountUSD)})</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">Current Stage:</span>

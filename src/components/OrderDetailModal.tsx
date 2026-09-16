@@ -1,3 +1,4 @@
+import { hasAdvanceReceived, receivedPaymentUSD } from '../../lib/order-payments.js';
 import React, { useState } from 'react';
 import { 
   X, 
@@ -121,13 +122,16 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
     if (isNaN(payAmount) || payAmount <= 0) return;
 
     const rate = order.exchangeRateUsdToAed || 3.6725;
-    const newAdvanceUSD = Math.min(order.totalAmountUSD, order.advancePaymentUSD + payAmount);
+    const newAdvanceUSD = Math.min(order.totalAmountUSD, receivedPaymentUSD(order) + payAmount);
     const newAdvanceAED = convertUsdToAed(newAdvanceUSD, rate);
     const newBalanceUSD = Math.max(0, order.totalAmountUSD - newAdvanceUSD);
     const newBalanceAED = Math.max(0, order.totalAmountAED - newAdvanceAED);
     const isFull = newBalanceUSD === 0;
 
-    const updatedStages = { ...order.stagesHistory };
+    const updatedStages = { ...order.stagesHistory, advance_received: {
+      ...order.stagesHistory.advance_received, stage: 'advance_received' as OrderStage,
+      completedAt: order.stagesHistory.advance_received?.completedAt || new Date().toISOString(),
+    } };
 
     // If full payment reached and current stage was prior to got_full_money
     if (isFull && currentStageIndex < 6) {
@@ -527,39 +531,39 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                     Total Full Amount
                   </div>
                   <div className="text-2xl font-black text-slate-900 mt-1">
-                    {formatUSD(order.totalAmountUSD)}
-                  </div>
-                  <div className="text-xs font-semibold text-slate-600 mt-0.5 font-mono">
                     {formatAED(order.totalAmountAED)}
                   </div>
+                  <div className="text-xs font-semibold text-slate-600 mt-0.5 font-mono">
+                    {formatUSD(order.totalAmountUSD)}
+                  </div>
                   <div className="text-[11px] text-slate-500 mt-2 font-mono space-y-0.5 border-t border-slate-200/80 pt-1.5">
-                    <div>{order.quantity.toLocaleString()} {order.unit} × {formatUSD(order.unitPriceUSD)} = {formatUSD(order.totalAmountUSD)}</div>
                     <div>{order.quantity.toLocaleString()} {order.unit} × {formatAED(order.unitPriceAED)} = {formatAED(order.totalAmountAED)}</div>
+                    <div>{order.quantity.toLocaleString()} {order.unit} × {formatUSD(order.unitPriceUSD)} = {formatUSD(order.totalAmountUSD)}</div>
                   </div>
                 </div>
 
                 {/* Advance Received */}
                 <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200">
                   <div className="flex items-center justify-between text-xs font-bold text-emerald-800 uppercase tracking-wider">
-                    <span>Advance Payment</span>
+                    <span>{hasAdvanceReceived(order) ? 'Advance Paid' : 'Advance'}</span>
                     <span className="bg-emerald-200/60 px-2 py-0.5 rounded-full text-emerald-900 text-[10px]">
                       {order.totalAmountUSD > 0 
                         ? Math.round((order.advancePaymentUSD / order.totalAmountUSD) * 100) 
-                        : 0}% Received
+                        : 0}% {hasAdvanceReceived(order) ? 'Received' : 'Planned'}
                     </span>
                   </div>
                   <div className="text-2xl font-black text-emerald-700 mt-1">
-                    {formatUSD(order.advancePaymentUSD)}
+                    {formatAED(order.advancePaymentAED)}
                   </div>
                   <div className="text-xs font-semibold text-emerald-800/80 mt-0.5 font-mono">
-                    {formatAED(order.advancePaymentAED)}
+                    {formatUSD(order.advancePaymentUSD)}
                   </div>
                   <div className="text-[11px] text-emerald-700 mt-2">
                     Credited into trade escrow account
                   </div>
                 </div>
 
-                {/* Balance Payment (Full - Advance) */}
+                {/* Balance Payment */}
                 <div className={`p-4 rounded-xl border ${
                   order.balancePaymentUSD > 0
                     ? 'bg-amber-50/80 border-amber-200 text-amber-950'
@@ -568,16 +572,16 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                   <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
                     <span>Balance Due</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/80 font-mono">
-                      Full - Advance
+                      {hasAdvanceReceived(order) ? 'Full - Advance' : 'Full Amount'}
                     </span>
                   </div>
                   <div className={`text-2xl font-black mt-1 ${
                     order.balancePaymentUSD > 0 ? 'text-amber-700' : 'text-emerald-700'
                   }`}>
-                    {formatUSD(order.balancePaymentUSD)}
+                    {formatAED(order.balancePaymentAED)}
                   </div>
                   <div className="text-xs font-semibold mt-0.5 font-mono">
-                    {formatAED(order.balancePaymentAED)}
+                    {formatUSD(order.balancePaymentUSD)}
                   </div>
                   <div className="text-[11px] mt-2 font-medium">
                     Due Date: {order.paymentDueDate} {order.isOverdue && '(OVERDUE)'}
@@ -622,7 +626,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                       className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow flex items-center gap-1.5"
                     >
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>Settle Full Balance ({formatUSD(order.balancePaymentUSD)})</span>
+                      <span>Settle Full Balance ({formatAED(order.balancePaymentAED)})</span>
                     </button>
                   </div>
                 </div>
@@ -632,7 +636,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1.5">
                 <div className="font-bold text-slate-800">Financial Balance Formulation:</div>
                 <div className="font-mono text-slate-700">
-                  Full Amount (${order.totalAmountUSD.toLocaleString()}) - Advance Received (${order.advancePaymentUSD.toLocaleString()}) = Balance Due (${order.balancePaymentUSD.toLocaleString()} USD / {order.balancePaymentAED.toLocaleString()} AED)
+                  Full Amount ({formatAED(order.totalAmountAED)}) - Payments Received ({formatAED(order.totalAmountAED - order.balancePaymentAED)}) = Balance Due ({formatAED(order.balancePaymentAED)} / {formatUSD(order.balancePaymentUSD)})
                 </div>
                 <div className="text-[11px] text-slate-500">
                   Order Exchange Rate: 1 USD = {order.exchangeRateUsdToAed || 3.6725} AED.

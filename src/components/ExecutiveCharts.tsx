@@ -1,3 +1,4 @@
+import { receivedPaymentUSD, receivedPaymentAED } from '../../lib/order-payments.js';
 import React, { useState } from 'react';
 import {
   ResponsiveContainer,
@@ -59,11 +60,11 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
   const monthlyData = months.map(mKey => {
     const monthOrders = orders.filter(o => o.month === mKey);
     const totalUSD = monthOrders.reduce((sum, o) => sum + o.totalAmountUSD, 0);
-    const advanceUSD = monthOrders.reduce((sum, o) => sum + o.advancePaymentUSD, 0);
+    const advanceUSD = monthOrders.reduce((sum, o) => sum + receivedPaymentUSD(o), 0);
     const balanceUSD = monthOrders.reduce((sum, o) => sum + o.balancePaymentUSD, 0);
 
     const totalAED = monthOrders.reduce((sum, o) => sum + o.totalAmountAED, 0);
-    const advanceAED = monthOrders.reduce((sum, o) => sum + o.advancePaymentAED, 0);
+    const advanceAED = monthOrders.reduce((sum, o) => sum + receivedPaymentAED(o), 0);
     const balanceAED = monthOrders.reduce((sum, o) => sum + o.balancePaymentAED, 0);
 
     const [y, m] = mKey.split('-');
@@ -112,11 +113,11 @@ export const ExecutiveCharts: React.FC<ExecutiveChartsProps> = ({
   const buyerExposureData = companies.map(company => {
     const compOrders = orders.filter(o => o.companyId === company.id);
     const totalUSD = compOrders.reduce((sum, o) => sum + o.totalAmountUSD, 0);
-    const advanceUSD = compOrders.reduce((sum, o) => sum + o.advancePaymentUSD, 0);
+    const advanceUSD = compOrders.reduce((sum, o) => sum + receivedPaymentUSD(o), 0);
     const balanceUSD = compOrders.reduce((sum, o) => sum + o.balancePaymentUSD, 0);
 
     const totalAED = compOrders.reduce((sum, o) => sum + o.totalAmountAED, 0);
-    const advanceAED = compOrders.reduce((sum, o) => sum + o.advancePaymentAED, 0);
+    const advanceAED = compOrders.reduce((sum, o) => sum + receivedPaymentAED(o), 0);
     const balanceAED = compOrders.reduce((sum, o) => sum + o.balancePaymentAED, 0);
 
     const displayName = company.name.length > 20 ? `${company.name.slice(0, 18)}...` : company.name;
