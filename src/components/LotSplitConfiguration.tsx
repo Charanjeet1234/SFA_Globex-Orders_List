@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Boxes, CheckCircle2, CircleAlert, SlidersHorizontal } from 'lucide-react';
-import { Order, OrderLot } from '../types';
+import { Order, OrderLot, OrderStage } from '../types';
 import { formatAED, formatUSD } from '../utils/pdfGenerator';
 import {
   createLots,
@@ -18,21 +18,21 @@ interface LotSplitConfigurationProps {
   unitPriceAED: number;
   exchangeRate: number;
   lots: OrderLot[];
-  advanceReceived: boolean;
+  currentStage: OrderStage;
   defaultAdvancePercent?: number;
   onLotsChange: (lots: OrderLot[]) => void;
 }
 
 const statusStyles = {
   fully_paid: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  partially_paid: 'bg-amber-100 text-amber-800 border-amber-200',
-  pending: 'bg-slate-100 text-slate-700 border-slate-200',
+  advance_paid: 'bg-amber-100 text-amber-800 border-amber-200',
+  advance: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
 const statusLabels = {
   fully_paid: 'Fully Paid',
-  partially_paid: 'Partially Paid',
-  pending: 'Pending',
+  advance_paid: 'Advance Paid',
+  advance: 'Advance',
 };
 
 export function LotSplitConfiguration({
@@ -42,13 +42,13 @@ export function LotSplitConfiguration({
   unitPriceAED,
   exchangeRate,
   lots,
-  advanceReceived,
+  currentStage,
   defaultAdvancePercent = 20,
   onLotsChange,
 }: LotSplitConfigurationProps) {
   const [customLotCount, setCustomLotCount] = useState(5);
   const pricing = { unitPriceUSD, unitPriceAED, exchangeRate };
-  const paymentState = { advanceReceived };
+  const paymentState = { defaultStage: currentStage };
   const normalizedLots = normalizeLots(lots, pricing, paymentState);
   const summary = summarizeLots(normalizedLots);
   const isDistributionValid = isValidLotDistribution(normalizedLots, quantity);
@@ -60,6 +60,7 @@ export function LotSplitConfiguration({
       quantity,
       lotCount,
       advancePercent: defaultAdvancePercent,
+      currentStage,
       ...pricing,
     }));
   };
@@ -227,7 +228,7 @@ export function LotSplitConfiguration({
                         <div className="font-bold text-amber-800">{formatAED(lot.balance_aed)}</div>
                         <div className="mt-0.5 font-mono text-[10px] text-slate-500">{formatUSD(lot.balance_usd)}</div>
                         <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
-                          {advanceReceived ? 'After advance' : 'Full lot total'}
+                          {lot.status === 'advance' ? 'Full lot total' : 'After advance'}
                         </div>
                       </td>
                       <td className="px-3 py-3">

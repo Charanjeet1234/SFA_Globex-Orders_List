@@ -100,7 +100,7 @@ export interface Company {
 
 export type AedRatePreset = '3.6725' | '3.6745' | 'custom';
 
-export type LotPaymentStatus = 'fully_paid' | 'partially_paid' | 'pending';
+export type LotPaymentStatus = 'advance' | 'advance_paid' | 'fully_paid';
 
 /**
  * Serialized with an order when a large MT order is split for shipment and
@@ -119,9 +119,15 @@ export interface OrderLot {
    */
   advance_paid_usd?: number;
   advance_paid_aed?: number;
+  /** Extra amount received above the agreed advance for this individual lot. */
+  extra_advance_usd?: number;
+  extra_advance_aed?: number;
+  extra_advance_note?: string;
   balance_usd: number;
   balance_aed: number;
   status: LotPaymentStatus;
+  /** Each shipment lot moves through the lifecycle independently. */
+  current_stage?: OrderStage;
 }
 
 export interface Order {
@@ -145,6 +151,14 @@ export interface Order {
   balancePaymentUSD: number; // Total less confirmed payments; planned advance is not deducted.
   balancePaymentAED: number; // Total less confirmed payments in AED.
   lots?: OrderLot[];
+
+  // Optional third-party referral commission (calculated per metric ton)
+  isThirdPartyOrder?: boolean;
+  thirdPartyName?: string;
+  commissionPerMTUSD?: number;
+  commissionPerMTAED?: number;
+  totalCommissionUSD?: number;
+  totalCommissionAED?: number;
 
   // Lifecycle & Stages
   currentStage: OrderStage;

@@ -1,4 +1,5 @@
 import { normalizeOrderPayments, receivedPaymentUSD } from '../lib/order-payments.js';
+import { getLotStage, recordLotAdvance } from '../lib/order-lots.js';
 import React, { useState, useEffect } from 'react';
 import { 
   Navbar 
@@ -124,7 +125,10 @@ export default function App() {
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
 
   const applyDatabaseState = (state: DatabaseState) => {
-    setOrders(state.orders);
+    // Normalize legacy lot records as they are read. Earlier records only had
+    // an order-level stage, so their confirmed advance must be derived once
+    // for display without making sibling lots share future changes.
+    setOrders(state.orders.map((order) => normalizeOrderPayments(order)));
     setCompanies(state.companies);
     setAuditLogs(state.auditLogs);
   };
@@ -480,6 +484,67 @@ export default function App() {
     }
   };
 
+  // Lots are operationally independent: moving one lot never changes the
+  // shipment stage or payment balance of its sibling lots.
+  const handleAdvanceLotStage = (order: Order, lotNumber: number) => {
+    if (!order.lots?.length) return;
+    const targetLot = order.lots.find((lot) => lot.lot_number === lotNumber);
+    if (!targetLot) return;
+    const currentStage = getLotStage(targetLot, order.currentStage);
+    const currentIndex = ORDER_STAGES.findIndex((stage) => stage.id === currentStage);
+    if (currentIndex < 0 || currentIndex >= ORDER_STAGES.length - 1) return;
+
+    const nextStage = ORDER_STAGES[currentIndex + 1].id;
+    if (nextStage === 'advance_received') return;
+    const nowISO = new Date().toISOString();
+    const lots = order.lots.map((lot) => lot.lot_number === lotNumber
+      ? { ...lot, current_stage: nextStage }
+      : lot);
+
+    void handleUpdateOrder({
+      ...order,
+      lots,
+      updatedAt: nowISO,
+    });
+    void logAudit(
+      'UPDATE_STAGE',
+      `${order.orderNumber}-LOT-${lotNumber}`,
+      'STAGE',
+      `Lot ${lotNumber} advanced from ${currentStage.replace(/_/g, ' ')} to ${nextStage.replace(/_/g, ' ')}.`
+    );
+  };
+
+  const handleRecordLotAdvance = (order: Order, lotNumber: number, receivedAdvanceAED: number) => {
+    if (!order.lots?.length) return;
+    const rate = order.exchangeRateUsdToAed || 3.6725;
+    const requestedAED = Math.max(0, Math.round(Number(receivedAdvanceAED) || 0));
+    if (requestedAED <= 0) return;
+    const receivedAdvanceUSD = Math.round(requestedAED / rate);
+    const targetLot = order.lots.find((lot) => lot.lot_number === lotNumber);
+    if (!targetLot) return;
+    const lots = order.lots.map((lot) => lot.lot_number === lotNumber
+      ? recordLotAdvance(lot, receivedAdvanceUSD, {
+        unitPriceUSD: order.unitPriceUSD,
+        unitPriceAED: order.unitPriceAED,
+        exchangeRate: rate,
+      })
+      : lot);
+    const recordedLot = lots.find((lot) => lot.lot_number === lotNumber)!;
+    const nowISO = new Date().toISOString();
+
+    void handleUpdateOrder({
+      ...order,
+      lots,
+      updatedAt: nowISO,
+    });
+    void logAudit(
+      'RECORD_PAYMENT',
+      `${order.orderNumber}-LOT-${lotNumber}`,
+      'PAYMENT',
+      `Recorded ${recordedLot.extra_advance_aed ? 'extra ' : ''}advance for Lot ${lotNumber}: AED ${recordedLot.advance_paid_aed?.toLocaleString() || 0}. Lot final amount: AED ${recordedLot.balance_aed.toLocaleString()}.`
+    );
+  };
+
   // Quick Pay Full Balance
   const handleQuickPayBalance = (order: Order) => {
     const updatedStages = { ...order.stagesHistory };
@@ -731,6 +796,8 @@ export default function App() {
             onSelectOrder={(order) => setSelectedOrderDetail(order)}
             onOpenOrderForm={() => setIsOrderFormOpen(true)}
             onAdvanceStage={handleAdvanceStage}
+            onAdvanceLotStage={handleAdvanceLotStage}
+            onRecordLotAdvance={handleRecordLotAdvance}
             onQuickPayBalance={handleQuickPayBalance}
             onAmendOrder={(order) => setOrderToAmend(order)}
             onDeleteOrder={(order) => setOrderToDelete(order)}

@@ -646,11 +646,11 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                               <span className={`rounded-full border px-2 py-1 text-[10px] font-black ${
                                 lot.status === 'fully_paid'
                                   ? 'border-emerald-200 bg-emerald-100 text-emerald-800'
-                                  : lot.status === 'partially_paid'
+                                  : lot.status === 'advance_paid'
                                     ? 'border-amber-200 bg-amber-100 text-amber-800'
                                     : 'border-slate-200 bg-slate-100 text-slate-700'
                               }`}>
-                                {lot.status === 'fully_paid' ? 'Fully Paid' : lot.status === 'partially_paid' ? 'Partially Paid' : 'Pending'}
+                                {lot.status === 'fully_paid' ? 'Fully Paid' : lot.status === 'advance_paid' ? 'Advance Paid' : 'Advance'}
                               </span>
                             </td>
                           </tr>

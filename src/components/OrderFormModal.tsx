@@ -58,6 +58,9 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   >("percent");
   const [lots, setLots] = useState<OrderLot[]>([]);
   const [lotSubmitError, setLotSubmitError] = useState<string | null>(null);
+  const [isThirdPartyOrder, setIsThirdPartyOrder] = useState(false);
+  const [thirdPartyName, setThirdPartyName] = useState('');
+  const [commissionPerMTUSD, setCommissionPerMTUSD] = useState(0);
 
   // New specific requirement: Allow user to select that only PI issued from company and waiting for PI to be signed from buyer
   const [isWaitingForBuyerPI, setIsWaitingForBuyerPI] = useState<boolean>(true);
@@ -85,12 +88,19 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   // Full Amount of Order: Quantity * USD Price, and Quantity * AED Price
   const totalAmountUSD = Math.round(quantity * unitPriceUSD);
   const totalAmountAED = Math.round(quantity * unitPriceAED);
+  const commissionPerMTAED = commissionPerMTUSD * exchangeRate;
+  const totalCommissionUSD = isThirdPartyOrder && unit === 'MT'
+    ? Math.round(quantity * commissionPerMTUSD)
+    : 0;
+  const totalCommissionAED = isThirdPartyOrder && unit === 'MT'
+    ? Math.round(totalCommissionUSD * exchangeRate)
+    : 0;
 
   const isLotSplitOrder = isLotSplitEligible(quantity, unit);
   const lotPricing = { unitPriceUSD, unitPriceAED, exchangeRate };
   const advanceReceivedForOrder = hasAdvanceReceived({ currentStage: initialStage });
   const normalizedLots = isLotSplitOrder
-    ? normalizeLots(lots, lotPricing, { advanceReceived: advanceReceivedForOrder })
+    ? normalizeLots(lots, lotPricing, { defaultStage: initialStage })
     : [];
   const hasLotConfiguration = normalizedLots.length > 0;
   const lotSummary = summarizeLots(normalizedLots);
@@ -238,6 +248,12 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
       balancePaymentUSD,
       balancePaymentAED,
       lots: hasLotConfiguration ? normalizedLots : undefined,
+      isThirdPartyOrder,
+      thirdPartyName: isThirdPartyOrder ? thirdPartyName.trim() || undefined : undefined,
+      commissionPerMTUSD: isThirdPartyOrder && unit === 'MT' ? commissionPerMTUSD : undefined,
+      commissionPerMTAED: isThirdPartyOrder && unit === 'MT' ? commissionPerMTAED : undefined,
+      totalCommissionUSD: isThirdPartyOrder && unit === 'MT' ? totalCommissionUSD : undefined,
+      totalCommissionAED: isThirdPartyOrder && unit === 'MT' ? totalCommissionAED : undefined,
       currentStage: initialStage,
       isWaitingForBuyerPI,
       stagesHistory,
@@ -513,7 +529,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
               unitPriceAED={unitPriceAED}
               exchangeRate={exchangeRate}
               lots={normalizedLots}
-              advanceReceived={advanceReceivedForOrder}
+              currentStage={initialStage}
               defaultAdvancePercent={advancePercent}
               onLotsChange={(nextLots) => {
                 setLotSubmitError(null);
@@ -525,6 +541,47 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                 {lotSubmitError}
               </p>
             )}
+
+            <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
+              <label className="flex cursor-pointer items-center gap-2 text-xs font-black text-violet-950">
+                <input
+                  type="checkbox"
+                  checked={isThirdPartyOrder}
+                  onChange={(event) => setIsThirdPartyOrder(event.target.checked)}
+                  className="h-4 w-4 rounded border-violet-300 text-violet-600 focus:ring-violet-500"
+                />
+                Order received through a third party
+              </label>
+              {isThirdPartyOrder && (
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Third-party / broker name</label>
+                    <input
+                      value={thirdPartyName}
+                      onChange={(event) => setThirdPartyName(event.target.value)}
+                      placeholder="Broker or referral partner"
+                      className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-violet-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[11px] font-bold text-slate-700">Commission per MT (USD)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={commissionPerMTUSD}
+                      onChange={(event) => setCommissionPerMTUSD(Math.max(0, Number(event.target.value) || 0))}
+                      className="w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-violet-500"
+                    />
+                  </div>
+                  <div className="sm:col-span-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-[11px] text-slate-700">
+                    {unit === 'MT' ? (
+                      <><span className="font-black text-violet-900">Commission total:</span> {formatAED(totalCommissionAED)} <span className="font-mono text-slate-500">({formatUSD(totalCommissionUSD)})</span> · {formatAED(commissionPerMTAED)} / MT</>
+                    ) : 'Commission is calculated per MT. Select Metric Tons (MT) to enable the total.'}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Section 3: AED Rate Selection (3.6725 or 3.6745 and Custom) */}

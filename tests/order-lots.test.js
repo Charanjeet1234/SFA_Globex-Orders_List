@@ -7,6 +7,7 @@ import {
   isLotSplitEligible,
   isValidLotDistribution,
   normalizeLots,
+  recordLotAdvance,
   summarizeLots,
 } from '../lib/order-lots.js';
 import { normalizeOrderPayments } from '../lib/order-payments.js';
@@ -36,8 +37,8 @@ test('lot financials calculate balances and statuses in USD and AED', () => {
 
   assert.equal(isValidLotDistribution(normalized, 250), true);
   assert.equal(normalized[0].status, 'fully_paid');
-  assert.equal(normalized[1].status, 'pending');
-  assert.equal(normalized[2].status, 'partially_paid');
+  assert.equal(normalized[1].status, 'advance');
+  assert.equal(normalized[2].status, 'advance_paid');
   assert.equal(summary.advanceUSD + summary.balanceUSD, 250000);
   assert.equal(summary.advanceAED + summary.balanceAED, 918250);
 });
@@ -47,11 +48,11 @@ test('a configured advance leaves the full lot amount due until it is received',
   const planned = normalizeLots(lots, pricing);
   const received = normalizeLots(lots, pricing, { advanceReceived: true });
 
-  assert.ok(planned.every((lot) => lot.status === 'pending'));
+  assert.ok(planned.every((lot) => lot.status === 'advance'));
   assert.equal(summarizeLots(planned).balanceUSD, 250000);
   assert.equal(summarizeLots(planned).balanceAED, 918250);
   assert.equal(summarizeLots(received).balanceUSD, 200000);
-  assert.ok(received.every((lot) => lot.status === 'partially_paid'));
+  assert.ok(received.every((lot) => lot.status === 'advance_paid'));
 });
 
 test('a recorded lot payment is applied to agreed advances before final amounts', () => {
@@ -60,7 +61,7 @@ test('a recorded lot payment is applied to agreed advances before final amounts'
 
   assert.equal(summarizeLots(paidLots).paidAdvanceUSD, 30000);
   assert.equal(summarizeLots(paidLots).balanceUSD, 220000);
-  assert.equal(paidLots[0].status, 'partially_paid');
+  assert.equal(paidLots[0].status, 'advance_paid');
 });
 
 test('order persistence keeps lot payloads and derives order-level payment totals', () => {
@@ -79,16 +80,42 @@ test('order persistence keeps lot payloads and derives order-level payment total
   });
 
   assert.deepEqual(Object.keys(normalizedOrder.lots[0]).sort(), [
-    'advance_aed', 'advance_usd', 'balance_aed', 'balance_usd', 'lot_number', 'quantity', 'status',
+    'advance_aed', 'advance_usd', 'balance_aed', 'balance_usd', 'current_stage', 'lot_number', 'quantity', 'status',
   ]);
   assert.equal(normalizedOrder.advancePaymentUSD, 50000);
   assert.equal(normalizedOrder.advancePaymentAED, 183625);
   assert.equal(normalizedOrder.balancePaymentUSD, 250000);
   assert.equal(normalizedOrder.balancePaymentAED, 918250);
-  assert.ok(normalizedOrder.lots.every((lot) => lot.status === 'pending'));
+  assert.ok(normalizedOrder.lots.every((lot) => lot.status === 'advance'));
 
-  const orderAfterAdvance = normalizeOrderPayments({ ...normalizedOrder, currentStage: 'advance_received' });
-  assert.equal(orderAfterAdvance.balancePaymentUSD, 200000);
-  assert.equal(orderAfterAdvance.balancePaymentAED, 734625);
-  assert.ok(orderAfterAdvance.lots.every((lot) => lot.status === 'partially_paid'));
+  // Advancing the parent order must not change individual lot payments.
+  const parentAfterAdvance = normalizeOrderPayments({ ...normalizedOrder, currentStage: 'advance_received' });
+  assert.equal(parentAfterAdvance.balancePaymentUSD, 250000);
+  assert.ok(parentAfterAdvance.lots.every((lot) => lot.status === 'advance'));
+
+  const firstLotPayment = recordLotAdvance(normalizedOrder.lots[0], 35000, pricing);
+  const orderAfterFirstLotAdvance = normalizeOrderPayments({
+    ...normalizedOrder,
+    lots: [firstLotPayment, ...normalizedOrder.lots.slice(1)],
+  });
+  assert.equal(orderAfterFirstLotAdvance.balancePaymentUSD, 215000);
+  assert.equal(orderAfterFirstLotAdvance.lots[0].status, 'advance_paid');
+  assert.ok(orderAfterFirstLotAdvance.lots.slice(1).every((lot) => lot.status === 'advance'));
+  assert.match(orderAfterFirstLotAdvance.lots[0].extra_advance_note, /Extra advance received/);
+});
+
+test('legacy lots inherit a confirmed parent advance only until each lot is independently updated', () => {
+  const legacyLots = createLots({ quantity: 250, lotCount: 3, advancePercent: 20, ...pricing })
+    .map(({ current_stage, ...lot }) => lot);
+  const hydrated = normalizeOrderPayments({
+    totalAmountUSD: 250000,
+    totalAmountAED: 918250,
+    currentStage: 'date_of_shipment',
+    exchangeRateUsdToAed: pricing.exchangeRate,
+    ...pricing,
+    lots: legacyLots,
+  });
+
+  assert.ok(hydrated.lots.every((lot) => lot.status === 'advance_paid'));
+  assert.equal(hydrated.balancePaymentUSD, 200000);
 });
