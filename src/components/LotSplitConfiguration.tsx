@@ -48,7 +48,7 @@ export function LotSplitConfiguration({
 }: LotSplitConfigurationProps) {
   const [customLotCount, setCustomLotCount] = useState(5);
   const pricing = { unitPriceUSD, unitPriceAED, exchangeRate };
-  const paymentState = { defaultStage: currentStage };
+  const paymentState = { defaultStage: currentStage, startAtPiSigned: true };
   const normalizedLots = normalizeLots(lots, pricing, paymentState);
   const summary = summarizeLots(normalizedLots);
   const isDistributionValid = isValidLotDistribution(normalizedLots, quantity);
@@ -60,7 +60,7 @@ export function LotSplitConfiguration({
       quantity,
       lotCount,
       advancePercent: defaultAdvancePercent,
-      currentStage,
+      currentStage: 'pi_signed',
       ...pricing,
     }));
   };
@@ -91,7 +91,7 @@ export function LotSplitConfiguration({
               Split into Lots
             </h3>
             <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-slate-600">
-              This {quantity.toLocaleString()} MT order is above the 224 MT threshold. Allocate shipment lots and set the advance for each lot independently.
+              This {quantity.toLocaleString()} MT order is above the 224 MT threshold. Every lot begins at PI Signed, then follows its own advance, shipment, BL, and final-payment progress independently.
             </p>
           </div>
         </div>

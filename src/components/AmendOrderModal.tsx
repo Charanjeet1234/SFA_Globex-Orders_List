@@ -14,7 +14,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Order, Company, OrderLot, OrderStage, ORDER_STAGES } from '../types';
-import { formatUSD, formatAED, convertUsdToAed } from '../utils/pdfGenerator';
+import { formatUSD, formatAED, formatAEDDecimal, convertUsdToAed } from '../utils/pdfGenerator';
 import { computeSHA256 } from '../utils/encryption';
 import { AedRateSelector } from './AedRateSelector';
 import { LotSplitConfiguration } from './LotSplitConfiguration';
@@ -103,18 +103,19 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
   const totalAmountUSD = Math.round(quantity * unitPriceUSD);
   const totalAmountAED = Math.round(quantity * unitPriceAED);
   const advancePaymentAED = convertUsdToAed(advancePaymentUSD, exchangeRate);
-  const commissionPerMTAED = commissionPerMTUSD * exchangeRate;
+  const commissionRate = 3.67;
+  const commissionPerMTAED = commissionPerMTUSD * commissionRate;
   const totalCommissionUSD = isThirdPartyOrder && unit === 'MT'
     ? Math.round(quantity * commissionPerMTUSD)
     : 0;
   const totalCommissionAED = isThirdPartyOrder && unit === 'MT'
-    ? Math.round(totalCommissionUSD * exchangeRate)
+    ? Math.round(totalCommissionUSD * commissionRate)
     : 0;
   const isLotSplitOrder = isLotSplitEligible(quantity, unit);
   const lotPricing = { unitPriceUSD, unitPriceAED, exchangeRate };
   const advanceReceivedForOrder = hasAdvanceReceived({ ...order, currentStage });
   const normalizedLots = isLotSplitOrder
-    ? normalizeLots(lots, lotPricing, { defaultStage: currentStage })
+    ? normalizeLots(lots, lotPricing, { defaultStage: currentStage, startAtPiSigned: true })
     : [];
   const hasLotConfiguration = normalizedLots.length > 0;
   const lotSummary = summarizeLots(normalizedLots);
@@ -527,7 +528,7 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
                   </div>
                   <div className="sm:col-span-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-[11px] text-slate-700">
                     {unit === 'MT' ? (
-                      <><span className="font-black text-violet-900">Commission total:</span> {formatAED(totalCommissionAED)} <span className="font-mono text-slate-500">({formatUSD(totalCommissionUSD)})</span> · {formatAED(commissionPerMTAED)} / MT</>
+                      <><span className="font-black text-violet-900">Commission total:</span> {formatAED(totalCommissionAED)} <span className="font-mono text-slate-500">({formatUSD(totalCommissionUSD)})</span> · {formatAEDDecimal(commissionPerMTAED)} / MT <span className="text-slate-500">at AED 3.67/USD</span></>
                     ) : 'Commission is calculated per MT. Select Metric Tons (MT) to enable the total.'}
                   </div>
                 </div>

@@ -25,7 +25,9 @@ import {
   PackageCheck
 } from 'lucide-react';
 import { Order, OrderStage, ORDER_STAGES, UserRole } from '../types';
-import { formatUSD, formatAED, generateOrderPDF } from '../utils/pdfGenerator';
+import { formatUSD, formatAED, formatAEDDecimal, generateOrderPDF } from '../utils/pdfGenerator';
+
+const LOT_ORDER_STAGES = ORDER_STAGES.filter((stage) => stage.id !== 'pi_issued');
 
 interface OrdersViewProps {
   orders: Order[];
@@ -123,6 +125,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     if (isCompleted) return 100;
     const step = getStageStep(stage);
     return Math.round((step / ORDER_STAGES.length) * 100);
+  };
+
+  const getLotStageStep = (stage: OrderStage) => {
+    const index = LOT_ORDER_STAGES.findIndex((item) => item.id === stage);
+    return index >= 0 ? index + 1 : 1;
+  };
+
+  const getLotStagePercentage = (stage: OrderStage, isCompleted: boolean) => {
+    if (isCompleted) return 100;
+    return Math.round((getLotStageStep(stage) / LOT_ORDER_STAGES.length) * 100);
   };
 
   const lotInputKey = (orderId: string, lotNumber: number) => `${orderId}-${lotNumber}`;
@@ -527,7 +539,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           <span className="font-black">Third-party commission</span>
                           {order.thirdPartyName && <span>· {order.thirdPartyName}</span>}
                           <span>· {formatAED(order.totalCommissionAED)} <span className="font-mono text-violet-700">({formatUSD(order.totalCommissionUSD || 0)})</span></span>
-                          <span className="text-violet-700">· {formatAED(order.commissionPerMTAED || 0)} / MT</span>
+                          <span className="text-violet-700">· {formatAEDDecimal(order.commissionPerMTAED || 0)} / MT at AED 3.67/USD</span>
                         </div>
                       )}
                     </div>
@@ -608,10 +620,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       </div>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                         {order.lots.map((lot) => {
-                          const lotStage = lot.current_stage || order.currentStage;
-                          const lotStep = getStageStep(lotStage);
-                          const lotProgress = getStagePercentage(lotStage, lot.status === 'fully_paid');
-                          const lotStageInfo = ORDER_STAGES.find((stage) => stage.id === lotStage) || ORDER_STAGES[0];
+                          const lotStage = lot.current_stage === 'pi_issued' ? 'pi_signed' : (lot.current_stage || 'pi_signed');
+                          const lotStep = getLotStageStep(lotStage);
+                          const lotProgress = getLotStagePercentage(lotStage, lot.status === 'fully_paid');
+                          const lotStageInfo = LOT_ORDER_STAGES.find((stage) => stage.id === lotStage) || LOT_ORDER_STAGES[0];
+                          const lotTotalAED = Math.round(lot.quantity * order.unitPriceAED);
+                          const lotTotalUSD = Math.round(lot.quantity * order.unitPriceUSD);
+                          const displayedAdvanceAED = lot.advance_paid_aed ?? lot.advance_aed;
+                          const displayedAdvanceUSD = lot.advance_paid_usd ?? lot.advance_usd;
                           const inputKey = lotInputKey(order.id, lot.lot_number);
                           const enteredAdvanceAED = Number(lotAdvanceInputs[inputKey]);
                           const requestedAdvanceAED = Number.isFinite(enteredAdvanceAED) && enteredAdvanceAED > 0
@@ -632,15 +648,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                   {lot.status === 'fully_paid' ? 'Fully Paid' : lot.status === 'advance_paid' ? 'Advance Paid' : 'Advance'}
                                 </span>
                               </div>
-                              <div className="mt-1 text-[10px] font-semibold text-slate-600">{lot.quantity.toLocaleString()} MT · Stage {lotStep}/8: {lotStageInfo.shortName}</div>
+                              <div className="mt-1 text-[10px] font-semibold text-slate-600">{lot.quantity.toLocaleString()} MT · Lot stage {lotStep}/{LOT_ORDER_STAGES.length}: {lotStageInfo.shortName}</div>
                               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-label={`Lot ${lot.lot_number} progress ${lotProgress}%`}>
                                 <div className="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 transition-all" style={{ width: `${lotProgress}%` }} />
                               </div>
-                              <div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 text-[10px]">
+                              <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-100 pt-2 text-[10px]">
+                                <div>
+                                  <div className="font-bold uppercase tracking-wide text-slate-400">Lot total</div>
+                                  <div className="mt-0.5 font-bold text-slate-800">{formatAED(lotTotalAED)}</div>
+                                  <div className="font-mono text-[9px] text-slate-500">{formatUSD(lotTotalUSD)}</div>
+                                  <div className="mt-0.5 text-[9px] text-slate-400">{lot.quantity.toLocaleString()} MT × {formatAED(order.unitPriceAED)}</div>
+                                </div>
                                 <div>
                                   <div className="font-bold uppercase tracking-wide text-slate-400">Advance</div>
-                                  <div className="mt-0.5 font-bold text-emerald-700">{formatAED(lot.advance_aed)}</div>
-                                  <div className="font-mono text-[9px] text-slate-500">{formatUSD(lot.advance_usd)}</div>
+                                  <div className="mt-0.5 font-bold text-emerald-700">{formatAED(displayedAdvanceAED)}</div>
+                                  <div className="font-mono text-[9px] text-slate-500">{formatUSD(displayedAdvanceUSD)}</div>
                                 </div>
                                 <div>
                                   <div className="font-bold uppercase tracking-wide text-slate-400">Final amount</div>
@@ -836,7 +858,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         <div className="font-semibold text-slate-900">{order.productName}</div>
                         <div className="text-[11px] text-slate-500">{order.quantity.toLocaleString()} {order.unit}</div>
                         {order.isThirdPartyOrder && order.totalCommissionAED !== undefined && (
-                          <div className="mt-1 text-[9px] font-bold text-violet-800">Commission: {formatAED(order.totalCommissionAED)} ({formatUSD(order.totalCommissionUSD || 0)})</div>
+                          <div className="mt-1 text-[9px] font-bold text-violet-800">Commission: {formatAED(order.totalCommissionAED)} ({formatUSD(order.totalCommissionUSD || 0)}) · {formatAEDDecimal(order.commissionPerMTAED || 0)}/MT</div>
                         )}
                       </td>
                       <td className="py-3.5 px-4 font-extrabold text-slate-900">

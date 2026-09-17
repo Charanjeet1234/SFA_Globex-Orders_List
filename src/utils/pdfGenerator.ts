@@ -16,6 +16,16 @@ export function formatAED(val: number): string {
   }).format(rounded);
 }
 
+/** Use this where a rate per unit must retain fils (e.g. AED 36.70/MT). */
+export function formatAEDDecimal(val: number): string {
+  return new Intl.NumberFormat('en-AE', {
+    style: 'currency',
+    currency: 'AED',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(val);
+}
+
 /**
  * Converts USD amount to AED using standard rounding to nearest integer:
  * e.g., 1175 * 3.6745 = 4317.5375 => 4318

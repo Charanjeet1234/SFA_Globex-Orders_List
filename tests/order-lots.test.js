@@ -55,6 +55,20 @@ test('a configured advance leaves the full lot amount due until it is received',
   assert.ok(received.every((lot) => lot.status === 'advance_paid'));
 });
 
+test('each new lot begins at PI Signed and retains its own stage', () => {
+  const lots = createLots({ quantity: 250, lotCount: 3, advancePercent: 20, ...pricing });
+  assert.ok(lots.every((lot) => lot.current_stage === 'pi_signed'));
+
+  const independentlyMoved = normalizeLots([
+    { ...lots[0], current_stage: 'bl_received' },
+    lots[1],
+    lots[2],
+  ], pricing, { startAtPiSigned: true });
+  assert.equal(independentlyMoved[0].current_stage, 'bl_received');
+  assert.equal(independentlyMoved[1].current_stage, 'pi_signed');
+  assert.equal(independentlyMoved[2].current_stage, 'pi_signed');
+});
+
 test('a recorded lot payment is applied to agreed advances before final amounts', () => {
   const lots = createLots({ quantity: 250, lotCount: 3, advancePercent: 20, ...pricing });
   const paidLots = applyLotAdvancePayment(lots, 30000, pricing);

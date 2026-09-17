@@ -10,6 +10,7 @@ export interface LotPricing {
 
 export interface LotPaymentState {
   defaultStage?: OrderStage;
+  startAtPiSigned?: boolean;
   advanceReceived?: boolean;
   fullyPaid?: boolean;
 }
