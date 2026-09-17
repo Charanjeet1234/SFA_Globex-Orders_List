@@ -13,7 +13,10 @@ import { getAdminEmail, isAdminEmail, isAdminUser, requiresAdminEmail } from './
 const projectDirectory = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(projectDirectory, '.env.local'), quiet: true });
 const databasePath = process.env.SFA_DATABASE_PATH || path.join(projectDirectory, 'data', 'sfa-globex.sqlite');
-const port = Number(process.env.PORT || 3000);
+// Keep the local full-stack server on the same port used by the app/browser.
+// This avoids serving the UI from one port while the development API is
+// accidentally started on another, which makes login requests fail to fetch.
+const port = Number(process.env.PORT || 3012);
 const host = process.env.HOST || '127.0.0.1';
 const developmentLogin = process.env.NODE_ENV === 'production' ? null : {
   email: (process.env.SFA_DEV_LOGIN_EMAIL || 'developer@sfa.local').trim().toLowerCase(),

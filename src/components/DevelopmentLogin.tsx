@@ -34,7 +34,12 @@ export function DevelopmentLogin({ onAuthenticated }: DevelopmentLoginProps) {
       }
       onAuthenticated(result.user);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to sign in to local development.');
+      const isTransportFailure = requestError instanceof TypeError && /fetch/i.test(requestError.message);
+      setError(
+        isTransportFailure
+          ? 'Local API is unavailable. Start `npm run dev` from the project folder, then reload this page.'
+          : requestError instanceof Error ? requestError.message : 'Unable to sign in to local development.',
+      );
     } finally {
       setIsSubmitting(false);
     }

@@ -495,7 +495,6 @@ export default function App() {
     if (currentIndex < 0 || currentIndex >= ORDER_STAGES.length - 1) return;
 
     const nextStage = ORDER_STAGES[currentIndex + 1].id;
-    if (nextStage === 'advance_received') return;
     const nowISO = new Date().toISOString();
     const lots = order.lots.map((lot) => lot.lot_number === lotNumber
       ? { ...lot, current_stage: nextStage }

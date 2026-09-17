@@ -115,7 +115,7 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
   const lotPricing = { unitPriceUSD, unitPriceAED, exchangeRate };
   const advanceReceivedForOrder = hasAdvanceReceived({ ...order, currentStage });
   const normalizedLots = isLotSplitOrder
-    ? normalizeLots(lots, lotPricing, { defaultStage: currentStage, startAtPiSigned: true })
+    ? normalizeLots(lots, lotPricing, { defaultStage: currentStage })
     : [];
   const hasLotConfiguration = normalizedLots.length > 0;
   const lotSummary = summarizeLots(normalizedLots);

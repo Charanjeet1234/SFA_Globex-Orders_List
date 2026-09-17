@@ -10,7 +10,6 @@ export interface LotPricing {
 
 export interface LotPaymentState {
   defaultStage?: OrderStage;
-  startAtPiSigned?: boolean;
   advanceReceived?: boolean;
   fullyPaid?: boolean;
 }
@@ -20,6 +19,7 @@ export function isLotSplitEligible(quantity: number, unit: Order['unit']): boole
 export function distributeLotQuantities(totalQuantity: number, lotCount: number): number[];
 export function normalizeLot(lot: Partial<OrderLot>, index: number, pricing: LotPricing, paymentState?: LotPaymentState): OrderLot;
 export function normalizeLots(lots: OrderLot[] | undefined, pricing: LotPricing, paymentState?: LotPaymentState): OrderLot[];
+export function isLotAdvanceStage(stage: OrderStage): boolean;
 export function createLots(options: LotPricing & {
   quantity: number;
   lotCount: number;
@@ -36,6 +36,7 @@ export function summarizeLots(lots: OrderLot[] | undefined): {
   balanceAED: number;
 };
 export function getLotTotal(lot: Partial<OrderLot>): { usd: number; aed: number };
+export function getLotStageRollup(lots: OrderLot[] | undefined, fallbackStage?: OrderStage): OrderStage;
 export function applyLotAdvancePayment(lots: OrderLot[] | undefined, totalPaidUSD: number, pricing: LotPricing): OrderLot[];
 export function recordLotAdvance(lot: OrderLot, receivedAdvanceUSD: number, pricing: LotPricing): OrderLot;
 export function getLotStage(lot: Partial<OrderLot>, defaultStage?: OrderStage): OrderStage;

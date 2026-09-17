@@ -1,5 +1,5 @@
 import { hasAdvanceReceived } from '../../lib/order-payments.js';
-import { applyLotAdvancePayment, getLotTotal } from '../../lib/order-lots.js';
+import { applyLotAdvancePayment, getLotStage, getLotTotal } from '../../lib/order-lots.js';
 import React, { useState } from 'react';
 import { 
   X, 
@@ -25,6 +25,9 @@ import {
 import confetti from 'canvas-confetti';
 import { Order, OrderStage, ORDER_STAGES, UserRole, StageRecord } from '../types';
 import { formatUSD, formatAED, generateOrderPDF } from '../utils/pdfGenerator';
+
+const LOT_ORDER_STAGES = ORDER_STAGES;
+const LOT_STAGE_SHORT_LABELS = ['PI', 'SIGNED', 'ADV', 'SHIP', 'DEP', 'BL', 'PAID', 'REL'];
 
 interface OrderDetailModalProps {
   order: Order | null;
@@ -196,6 +199,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   };
 
   const isWaitingPI = order.isWaitingForBuyerPI || order.currentStage === 'pi_issued';
+  const completedLots = order.lots?.filter((lot) => lot.status === 'fully_paid') || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
@@ -328,7 +332,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
         <div className="p-6 max-h-[72vh] overflow-y-auto">
           
           {/* Specific Banner: Only PI issued & Waiting for buyer signature */}
-          {isWaitingPI && (
+          {!order.lots?.length && isWaitingPI && (
             <div className="mb-6 p-4 rounded-xl bg-amber-50 border-2 border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
               <div className="flex items-start gap-3">
                 <FileCheck className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
@@ -353,7 +357,48 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
           )}
 
           {/* TAB 1: 8-STAGE TRADE LIFECYCLE */}
-          {activeTab === 'stages' && (
+          {activeTab === 'stages' && (order.lots?.length ? (
+            <section className="space-y-4" aria-labelledby="lot-lifecycle-heading">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <h3 id="lot-lifecycle-heading" className="text-sm font-black text-slate-900">Independent lot lifecycles</h3>
+                <p className="mt-1 text-xs leading-relaxed text-slate-600">This split order has no shared shipment, BL, or payment timeline. Each lot starts at PI Issued (or its selected initial stage) and moves independently.</p>
+                <p className="mt-1 text-xs font-black text-emerald-800">Parent order progress: {completedLots.length > 0 ? completedLots.map((lot) => `Lot ${lot.lot_number} complete`).join(' · ') : `0 of ${order.lots.length} lots complete`}</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {order.lots.map((lot) => {
+                  const lotStage = getLotStage(lot, 'pi_issued');
+                  const lotStageIndex = Math.max(0, LOT_ORDER_STAGES.findIndex((stage) => stage.id === lotStage));
+                  const lotProgress = Math.round(((lotStageIndex + 1) / LOT_ORDER_STAGES.length) * 100);
+                  return (
+                    <div key={lot.lot_number} className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black text-slate-900">Lot {lot.lot_number} · {lot.quantity.toLocaleString()} MT</span>
+                        <span className="text-[10px] font-bold text-blue-800">{lotStageIndex + 1}/{LOT_ORDER_STAGES.length} · {lotProgress}%</span>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500" style={{ width: `${lotProgress}%` }} />
+                      </div>
+                      <div className="mt-2 grid grid-cols-8 gap-1 text-center">
+                        {LOT_ORDER_STAGES.map((stage, index) => {
+                          const isDone = index < lotStageIndex;
+                          const isCurrent = index === lotStageIndex;
+                          return (
+                            <div key={stage.id} title={stage.shortName} className="flex min-w-0 flex-col items-center">
+                              <span className={`flex h-4 w-4 items-center justify-center rounded-full border text-[8px] font-black ${
+                                isDone ? 'border-emerald-500 bg-emerald-500 text-white' : isCurrent ? 'border-blue-600 bg-blue-600 text-white ring-2 ring-blue-200' : 'border-slate-300 bg-white text-slate-400'
+                              }`}>{isDone ? '✓' : index + 1}</span>
+                              <span className={`mt-1 text-[7px] font-bold ${isCurrent ? 'text-blue-800' : isDone ? 'text-slate-700' : 'text-slate-400'}`}>{LOT_STAGE_SHORT_LABELS[index]}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[11px] text-slate-500">Advance and stage controls are available on each lot in Orders &amp; Shipment Tracking.</p>
+            </section>
+          ) : (
             <div className="space-y-6">
               
               {/* Stage Progress Banner */}
@@ -528,7 +573,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 })}
               </div>
             </div>
-          )}
+          ))}
 
           {/* TAB 2: FINANCIALS & MULTI-CURRENCY BALANCE PAYMENT (USD & AED) */}
           {activeTab === 'financials' && (
@@ -650,7 +695,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                                     ? 'border-amber-200 bg-amber-100 text-amber-800'
                                     : 'border-slate-200 bg-slate-100 text-slate-700'
                               }`}>
-                                {lot.status === 'fully_paid' ? 'Fully Paid' : lot.status === 'advance_paid' ? 'Advance Paid' : 'Advance'}
+                                {lot.status === 'fully_paid' ? `Lot ${lot.lot_number} payment received` : lot.status === 'advance_paid' ? 'Advance paid' : 'Advance pending'}
                               </span>
                             </td>
                           </tr>
@@ -663,7 +708,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               )}
 
               {/* Payment Settlement Action Box */}
-              {userRole !== 'auditor' && order.balancePaymentUSD > 0 && (
+              {!order.lots?.length && userRole !== 'auditor' && order.balancePaymentUSD > 0 && (
                 <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 shadow-md">
                   <h3 className="text-sm font-bold text-white flex items-center gap-2">
                     <DollarSign className="w-4 h-4 text-emerald-400" />

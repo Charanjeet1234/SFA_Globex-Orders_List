@@ -1,4 +1,5 @@
 import { hasAdvanceReceived, receivedPaymentUSD } from '../../lib/order-payments.js';
+import { getLotStage, isLotAdvanceStage } from '../../lib/order-lots.js';
 import React, { useState, useMemo } from 'react';
 import { 
   Search, 
@@ -27,7 +28,8 @@ import {
 import { Order, OrderStage, ORDER_STAGES, UserRole } from '../types';
 import { formatUSD, formatAED, formatAEDDecimal, generateOrderPDF } from '../utils/pdfGenerator';
 
-const LOT_ORDER_STAGES = ORDER_STAGES.filter((stage) => stage.id !== 'pi_issued');
+const LOT_ORDER_STAGES = ORDER_STAGES;
+const LOT_STAGE_SHORT_LABELS = ['PI', 'SIGNED', 'ADV', 'SHIP', 'DEP', 'BL', 'PAID', 'REL'];
 
 interface OrdersViewProps {
   orders: Order[];
@@ -132,8 +134,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     return index >= 0 ? index + 1 : 1;
   };
 
-  const getLotStagePercentage = (stage: OrderStage, isCompleted: boolean) => {
-    if (isCompleted) return 100;
+  const getLotStagePercentage = (stage: OrderStage) => {
     return Math.round((getLotStageStep(stage) / LOT_ORDER_STAGES.length) * 100);
   };
 
@@ -386,6 +387,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             const currentStep = getStageStep(order.currentStage);
             const progressPercent = getStagePercentage(order.currentStage, order.isCompleted);
             const hasLots = Boolean(order.lots?.length);
+            const completedLots = hasLots ? order.lots!.filter((lot) => lot.status === 'fully_paid') : [];
             const recordedAdvanceUSD = hasLots ? receivedPaymentUSD(order) : order.advancePaymentUSD;
             const recordedAdvanceAED = hasLots
               ? Math.max(0, order.totalAmountAED - order.balancePaymentAED)
@@ -568,7 +570,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         {/* Advance */}
                         <div className="p-2.5 rounded-lg bg-white border border-slate-200/80">
                           <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                            <span>{hasLots ? 'Advance received' : 'Advance'}</span>
+                            <span>{hasLots ? 'Lot payments received' : 'Advance'}</span>
                             <span className="text-emerald-600 font-semibold">{advanceRatio}%</span>
                           </div>
                           <div className="text-sm font-black text-emerald-600 mt-0.5">
@@ -615,25 +617,31 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                         <div>
                           <h3 className="text-xs font-black text-slate-900">Lot-wise order breakdown</h3>
                           <p className="text-[10px] text-slate-600">Each lot tracks its own shipment stage. AED is primary and each final amount reduces only when that lot's advance is recorded.</p>
+                          <p className="mt-1 text-[10px] font-bold text-blue-900">Parent rollup: {currentStageInfo.shortName} · {order.lots.filter((lot) => getLotStage(lot, 'pi_issued') === order.currentStage).length} lot(s) currently at the least-advanced stage</p>
+                          <p className="mt-1 text-[10px] font-black text-emerald-800" aria-label={`Parent order progress: ${completedLots.length} of ${order.lots.length} lots complete`}>
+                            Parent order progress: {completedLots.length > 0 ? completedLots.map((lot) => `Lot ${lot.lot_number} complete`).join(' · ') : `0 of ${order.lots.length} lots complete`}
+                          </p>
                         </div>
                         <span className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-bold text-blue-800">{order.lots.length} lots</span>
                       </div>
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                         {order.lots.map((lot) => {
-                          const lotStage = lot.current_stage === 'pi_issued' ? 'pi_signed' : (lot.current_stage || 'pi_signed');
+                          const lotStage = lot.current_stage || 'pi_issued';
                           const lotStep = getLotStageStep(lotStage);
-                          const lotProgress = getLotStagePercentage(lotStage, lot.status === 'fully_paid');
+                          const lotProgress = getLotStagePercentage(lotStage);
                           const lotStageInfo = LOT_ORDER_STAGES.find((stage) => stage.id === lotStage) || LOT_ORDER_STAGES[0];
+                          const lotAdvanceStageReached = isLotAdvanceStage(lotStage);
+                          const nextLotStageInfo = LOT_ORDER_STAGES[lotStep] || null;
                           const lotTotalAED = Math.round(lot.quantity * order.unitPriceAED);
                           const lotTotalUSD = Math.round(lot.quantity * order.unitPriceUSD);
-                          const displayedAdvanceAED = lot.advance_paid_aed ?? lot.advance_aed;
-                          const displayedAdvanceUSD = lot.advance_paid_usd ?? lot.advance_usd;
+                          const displayedAdvanceAED = lotAdvanceStageReached ? lot.advance_paid_aed ?? lot.advance_aed : lot.advance_aed;
+                          const displayedAdvanceUSD = lotAdvanceStageReached ? lot.advance_paid_usd ?? lot.advance_usd : lot.advance_usd;
                           const inputKey = lotInputKey(order.id, lot.lot_number);
                           const enteredAdvanceAED = Number(lotAdvanceInputs[inputKey]);
                           const requestedAdvanceAED = Number.isFinite(enteredAdvanceAED) && enteredAdvanceAED > 0
                             ? enteredAdvanceAED
                             : lot.advance_paid_aed ?? lot.advance_aed;
-                          const canAdvanceLot = lot.status !== 'fully_paid' && lotStage !== 'pi_signed' && lotStage !== 'got_full_money' && lotStage !== 'bl_surrender';
+                          const canAdvanceLot = lotStage !== 'bl_surrender';
                           return (
                             <div key={lot.lot_number} className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-xs">
                               <div className="flex items-center justify-between gap-2">
@@ -645,12 +653,41 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                       ? 'border-amber-200 bg-amber-100 text-amber-800'
                                       : 'border-slate-200 bg-slate-100 text-slate-700'
                                 }`}>
-                                  {lot.status === 'fully_paid' ? 'Fully Paid' : lot.status === 'advance_paid' ? 'Advance Paid' : 'Advance'}
+                                  {lot.status === 'fully_paid' ? `Lot ${lot.lot_number} payment received` : lot.status === 'advance_paid' ? 'Advance paid' : 'Advance pending'}
                                 </span>
                               </div>
                               <div className="mt-1 text-[10px] font-semibold text-slate-600">{lot.quantity.toLocaleString()} MT · Lot stage {lotStep}/{LOT_ORDER_STAGES.length}: {lotStageInfo.shortName}</div>
-                              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100" aria-label={`Lot ${lot.lot_number} progress ${lotProgress}%`}>
-                                <div className="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 transition-all" style={{ width: `${lotProgress}%` }} />
+                              <div className="mt-2.5 rounded-lg border border-blue-100 bg-blue-50/50 p-2" aria-label={`Lot ${lot.lot_number} order progress: ${lotProgress}% complete`}>
+                                <div className="mb-1.5 flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-wide text-blue-900">
+                                  <span>Lot order progress</span>
+                                  <span>{lotProgress}%</span>
+                                </div>
+                                <div className="relative">
+                                  <div className="absolute left-1 right-1 top-1.5 h-1 rounded-full bg-slate-200" />
+                                  <div className="absolute left-1 top-1.5 h-1 rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 transition-all" style={{ width: `calc(${lotProgress}% - 0.5rem)` }} />
+                                  <div className="relative grid grid-cols-8 gap-0.5 text-center">
+                                    {LOT_ORDER_STAGES.map((stage, stageIndex) => {
+                                      const isDone = stageIndex < lotStep - 1;
+                                      const isCurrent = stageIndex === lotStep - 1;
+                                      return (
+                                        <div key={stage.id} className="flex min-w-0 flex-col items-center" title={stage.shortName}>
+                                          <span className={`flex h-4 w-4 items-center justify-center rounded-full border text-[8px] font-black ${
+                                            isDone
+                                              ? 'border-emerald-500 bg-emerald-500 text-white'
+                                              : isCurrent
+                                                ? 'border-blue-600 bg-blue-600 text-white ring-2 ring-blue-200'
+                                                : 'border-slate-300 bg-white text-slate-400'
+                                          }`}>
+                                            {isDone ? '✓' : stageIndex + 1}
+                                          </span>
+                                          <span className={`mt-1 truncate text-[7px] font-bold ${isCurrent ? 'text-blue-800' : isDone ? 'text-slate-700' : 'text-slate-400'}`}>
+                                            {LOT_STAGE_SHORT_LABELS[stageIndex]}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
                               </div>
                               <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-100 pt-2 text-[10px]">
                                 <div>
@@ -673,7 +710,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                               {lot.extra_advance_note && (
                                 <p className="mt-2 rounded-md border border-violet-200 bg-violet-50 px-2 py-1.5 text-[9px] font-semibold leading-relaxed text-violet-900">{lot.extra_advance_note}</p>
                               )}
-                              {userRole !== 'auditor' && lot.status !== 'fully_paid' && (
+                              {userRole !== 'auditor' && lotStage !== 'bl_surrender' && (lot.status !== 'fully_paid' || canAdvanceLot) && (
                                 <div className="mt-2.5 border-t border-slate-100 pt-2.5">
                                   {lotStage === 'pi_issued' ? (
                                     <button type="button" onClick={() => onAdvanceLotStage(order, lot.lot_number)} className="w-full rounded-lg bg-blue-600 px-2 py-1.5 text-[10px] font-bold text-white hover:bg-blue-500">
@@ -681,23 +718,32 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                     </button>
                                   ) : (
                                     <div className="space-y-1.5">
-                                      <label className="block text-[9px] font-bold uppercase tracking-wide text-slate-500">Total advance received (AED)</label>
-                                      <input
-                                        type="number"
-                                        min="0"
-                                        step="1"
-                                        value={lotAdvanceInputs[inputKey] ?? ''}
-                                        placeholder={(lot.advance_paid_aed ?? lot.advance_aed).toLocaleString()}
-                                        onChange={(event) => setLotAdvanceInputs((current) => ({ ...current, [inputKey]: event.target.value }))}
-                                        className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-[10px] font-bold text-slate-900 outline-none focus:border-blue-500"
-                                      />
-                                      <button type="button" onClick={() => onRecordLotAdvance(order, lot.lot_number, requestedAdvanceAED)} className="w-full rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-bold text-white hover:bg-emerald-500">
-                                        {lot.status === 'advance_paid' ? 'Update Advance' : 'Record Advance'}
-                                      </button>
-                                      <p className="text-[9px] leading-relaxed text-slate-500">Enter more than the agreed advance to record “Extra advance received” and reduce this lot’s final amount.</p>
+                                      {lot.status !== 'fully_paid' && lotAdvanceStageReached && (
+                                        <>
+                                          <label className="block text-[9px] font-bold uppercase tracking-wide text-slate-500">Total advance received (AED)</label>
+                                          <input
+                                            type="number"
+                                            min="0"
+                                            step="1"
+                                            value={lotAdvanceInputs[inputKey] ?? ''}
+                                            placeholder={(lot.advance_paid_aed ?? lot.advance_aed).toLocaleString()}
+                                            onChange={(event) => setLotAdvanceInputs((current) => ({ ...current, [inputKey]: event.target.value }))}
+                                            className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-[10px] font-bold text-slate-900 outline-none focus:border-blue-500"
+                                          />
+                                          <button type="button" onClick={() => onRecordLotAdvance(order, lot.lot_number, requestedAdvanceAED)} className="w-full rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-bold text-white hover:bg-emerald-500">
+                                            {lot.status === 'advance_paid' ? 'Update Advance' : 'Record Advance'}
+                                          </button>
+                                          <p className="text-[9px] leading-relaxed text-slate-500">Enter more than the agreed advance to record “Extra advance received” and reduce this lot’s final amount.</p>
+                                        </>
+                                      )}
+                                      {!lotAdvanceStageReached && lotStage === 'pi_signed' && (
+                                        <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-[9px] font-semibold leading-relaxed text-amber-900">
+                                          Mark this lot as Advance Paid before recording its advance. The final amount stays unchanged until then.
+                                        </p>
+                                      )}
                                       {canAdvanceLot && (
                                         <button type="button" onClick={() => onAdvanceLotStage(order, lot.lot_number)} className="w-full rounded-lg border border-blue-200 bg-blue-50 px-2 py-1.5 text-[10px] font-bold text-blue-800 hover:bg-blue-100">
-                                          Advance Lot Stage
+                                          {nextLotStageInfo?.id === 'advance_received' ? 'Mark Advance Paid' : 'Advance Lot Stage'}
                                         </button>
                                       )}
                                     </div>
@@ -711,7 +757,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     </section>
                   )}
 
-                  {/* VISUAL PROGRESS BAR FOR EACH DELIVERY STAGE */}
+                  {/* A non-split order has one lifecycle. Split orders use the independent mini-order bars above. */}
+                  {!hasLots && (
                   <div className="mt-5 pt-4 border-t border-slate-100">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
@@ -770,6 +817,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     </div>
 
                   </div>
+                  )}
                 </div>
 
                 {/* Card Footer: Quick Actions & Transition Prompt */}
@@ -786,7 +834,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
                   <div className="flex items-center gap-2 flex-wrap">
                     {/* Advance Stage button if not completed */}
-                    {!order.isCompleted && order.currentStage !== 'bl_surrender' && userRole !== 'auditor' && (
+                    {!hasLots && !order.isCompleted && order.currentStage !== 'bl_surrender' && userRole !== 'auditor' && (
                       <button
                         onClick={() => onAdvanceStage(order)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold transition active:scale-95 shadow-sm"
@@ -799,7 +847,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     )}
 
                     {/* Quick Pay Balance if balance > 0 */}
-                    {order.balancePaymentUSD > 0 && userRole !== 'auditor' && (
+                    {!hasLots && order.balancePaymentUSD > 0 && userRole !== 'auditor' && (
                       <button
                         onClick={() => onQuickPayBalance(order)}
                         className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold transition active:scale-95 shadow-sm"
@@ -840,6 +888,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   const currentStageInfo = ORDER_STAGES.find(s => s.id === order.currentStage) || ORDER_STAGES[0];
                   const step = getStageStep(order.currentStage);
                   const isWaitingPI = order.isWaitingForBuyerPI || order.currentStage === 'pi_issued';
+                  const completedLots = order.lots?.filter((lot) => lot.status === 'fully_paid') || [];
                   const recordedAdvanceUSD = order.lots?.length ? receivedPaymentUSD(order) : order.advancePaymentUSD;
                   const recordedAdvanceAED = order.lots?.length
                     ? Math.max(0, order.totalAmountAED - order.balancePaymentAED)
@@ -871,7 +920,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       <td className="py-3.5 px-4 font-semibold text-emerald-600">
                         {formatAED(recordedAdvanceAED)}
                         <div className="text-[10px] text-slate-500">{formatUSD(recordedAdvanceUSD)}</div>
-                        <div className="text-[10px]">{order.lots?.length ? 'Advance received' : 'Advance'}</div>
+                        <div className="text-[10px]">{completedLots.length > 0 ? completedLots.map((lot) => `Lot ${lot.lot_number} payment received`).join(' · ') : order.lots?.length ? 'Advance paid' : 'Advance'}</div>
                       </td>
                       <td className="py-3.5 px-4 font-extrabold">
                         <span className={order.balancePaymentUSD > 0 ? 'text-amber-700' : 'text-emerald-700'}>
