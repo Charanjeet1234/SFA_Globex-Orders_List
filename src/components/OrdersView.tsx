@@ -532,10 +532,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Advance Received */}
+                        {/* Advance */}
                         <div className="p-2.5 rounded-lg bg-white border border-slate-200/80">
                           <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                            <span>{hasAdvanceReceived(order) ? 'Advance Paid' : 'Advance'}</span>
+                            <span>Advance</span>
                             <span className="text-emerald-600 font-semibold">{advanceRatio}%</span>
                           </div>
                           <div className="text-sm font-black text-emerald-600 mt-0.5">
@@ -572,6 +572,49 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                     </div>
 
                   </div>
+
+                  {order.lots && order.lots.length > 0 && (
+                    <section className="mt-4 rounded-xl border border-blue-200 bg-blue-50/60 p-3" aria-label={`${order.orderNumber} lot breakdown`}>
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <h3 className="text-xs font-black text-slate-900">Lot-wise order breakdown</h3>
+                          <p className="text-[10px] text-slate-600">AED is primary. Final amounts reduce when the advance is recorded.</p>
+                        </div>
+                        <span className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-bold text-blue-800">{order.lots.length} lots</span>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {order.lots.map((lot) => (
+                          <div key={lot.lot_number} className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-black text-slate-900">Lot {lot.lot_number}</span>
+                              <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${
+                                lot.status === 'fully_paid'
+                                  ? 'border-emerald-200 bg-emerald-100 text-emerald-800'
+                                  : lot.status === 'partially_paid'
+                                    ? 'border-amber-200 bg-amber-100 text-amber-800'
+                                    : 'border-slate-200 bg-slate-100 text-slate-700'
+                              }`}>
+                                {lot.status === 'fully_paid' ? 'Fully Paid' : lot.status === 'partially_paid' ? 'Partially Paid' : 'Pending'}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-[10px] font-semibold text-slate-600">{lot.quantity.toLocaleString()} MT</div>
+                            <div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 text-[10px]">
+                              <div>
+                                <div className="font-bold uppercase tracking-wide text-slate-400">Advance</div>
+                                <div className="mt-0.5 font-bold text-emerald-700">{formatAED(lot.advance_aed)}</div>
+                                <div className="font-mono text-[9px] text-slate-500">{formatUSD(lot.advance_usd)}</div>
+                              </div>
+                              <div>
+                                <div className="font-bold uppercase tracking-wide text-slate-400">Final amount</div>
+                                <div className="mt-0.5 font-bold text-amber-800">{formatAED(lot.balance_aed)}</div>
+                                <div className="font-mono text-[9px] text-slate-500">{formatUSD(lot.balance_usd)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
 
                   {/* VISUAL PROGRESS BAR FOR EACH DELIVERY STAGE */}
                   <div className="mt-5 pt-4 border-t border-slate-100">
@@ -726,7 +769,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       <td className="py-3.5 px-4 font-semibold text-emerald-600">
                         {formatAED(order.advancePaymentAED)}
                         <div className="text-[10px] text-slate-500">{formatUSD(order.advancePaymentUSD)}</div>
-                        <div className="text-[10px]">{hasAdvanceReceived(order) ? 'Advance Paid' : 'Advance'}</div>
+                        <div className="text-[10px]">Advance</div>
                       </td>
                       <td className="py-3.5 px-4 font-extrabold">
                         <span className={order.balancePaymentUSD > 0 ? 'text-amber-700' : 'text-emerald-700'}>

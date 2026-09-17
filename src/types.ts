@@ -109,8 +109,16 @@ export type LotPaymentStatus = 'fully_paid' | 'partially_paid' | 'pending';
 export interface OrderLot {
   lot_number: number;
   quantity: number;
+  /** The agreed advance for this lot. AED is the primary display currency. */
   advance_usd: number;
   advance_aed: number;
+  /**
+   * Recorded cash against the agreed advance. These are intentionally kept
+   * separate so a configured advance does not reduce the final amount until
+   * it has actually been received.
+   */
+  advance_paid_usd?: number;
+  advance_paid_aed?: number;
   balance_usd: number;
   balance_aed: number;
   status: LotPaymentStatus;

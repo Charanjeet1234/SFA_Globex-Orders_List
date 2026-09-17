@@ -1,4 +1,5 @@
-import { hasAdvanceReceived, receivedPaymentUSD } from '../../lib/order-payments.js';
+import { hasAdvanceReceived } from '../../lib/order-payments.js';
+import { applyLotAdvancePayment, getLotTotal } from '../../lib/order-lots.js';
 import React, { useState } from 'react';
 import { 
   X, 
@@ -23,7 +24,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Order, OrderStage, ORDER_STAGES, UserRole, StageRecord } from '../types';
-import { formatUSD, formatAED, generateOrderPDF, convertUsdToAed } from '../utils/pdfGenerator';
+import { formatUSD, formatAED, generateOrderPDF } from '../utils/pdfGenerator';
 
 interface OrderDetailModalProps {
   order: Order | null;
@@ -46,7 +47,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const [editingStage, setEditingStage] = useState<OrderStage | null>(null);
   const [stageRefInput, setStageRefInput] = useState('');
   const [stageNotesInput, setStageNotesInput] = useState('');
-  const [paymentInputUSD, setPaymentInputUSD] = useState('');
+  const [paymentInputAED, setPaymentInputAED] = useState('');
 
   if (!order) return null;
 
@@ -118,15 +119,25 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 
   // Record an additional payment or full balance payment
   const handleRecordPayment = (payFull = false) => {
-    const payAmount = payFull ? order.balancePaymentUSD : parseFloat(paymentInputUSD);
-    if (isNaN(payAmount) || payAmount <= 0) return;
+    const payAmountAED = payFull ? order.balancePaymentAED : parseFloat(paymentInputAED);
+    if (isNaN(payAmountAED) || payAmountAED <= 0) return;
 
     const rate = order.exchangeRateUsdToAed || 3.6725;
-    const newAdvanceUSD = Math.min(order.totalAmountUSD, receivedPaymentUSD(order) + payAmount);
-    const newAdvanceAED = convertUsdToAed(newAdvanceUSD, rate);
+    const payAmountUSD = Math.round(payAmountAED / rate);
+    const currentReceivedUSD = Math.max(0, order.totalAmountUSD - order.balancePaymentUSD);
+    const currentReceivedAED = Math.max(0, order.totalAmountAED - order.balancePaymentAED);
+    const newAdvanceUSD = Math.min(order.totalAmountUSD, currentReceivedUSD + payAmountUSD);
+    const newAdvanceAED = Math.min(order.totalAmountAED, currentReceivedAED + payAmountAED);
     const newBalanceUSD = Math.max(0, order.totalAmountUSD - newAdvanceUSD);
     const newBalanceAED = Math.max(0, order.totalAmountAED - newAdvanceAED);
     const isFull = newBalanceUSD === 0;
+    const updatedLots = order.lots?.length
+      ? applyLotAdvancePayment(order.lots, newAdvanceUSD, {
+        unitPriceUSD: order.unitPriceUSD,
+        unitPriceAED: order.unitPriceAED,
+        exchangeRate: rate,
+      })
+      : undefined;
 
     const updatedStages = { ...order.stagesHistory, advance_received: {
       ...order.stagesHistory.advance_received, stage: 'advance_received' as OrderStage,
@@ -149,13 +160,14 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
       advancePaymentAED: newAdvanceAED,
       balancePaymentUSD: newBalanceUSD,
       balancePaymentAED: newBalanceAED,
+      lots: updatedLots,
       isFullPaymentReceived: isFull,
       isOverdue: isFull ? false : order.isOverdue,
       stagesHistory: updatedStages,
       updatedAt: new Date().toISOString(),
     });
 
-    setPaymentInputUSD('');
+    setPaymentInputAED('');
     if (isFull) {
       triggerCelebration();
     }
@@ -545,7 +557,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 {/* Advance Received */}
                 <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200">
                   <div className="flex items-center justify-between text-xs font-bold text-emerald-800 uppercase tracking-wider">
-                    <span>{hasAdvanceReceived(order) ? 'Advance Paid' : 'Advance'}</span>
+                            <span>Advance</span>
                     <span className="bg-emerald-200/60 px-2 py-0.5 rounded-full text-emerald-900 text-[10px]">
                       {order.totalAmountUSD > 0 
                         ? Math.round((order.advancePaymentUSD / order.totalAmountUSD) * 100) 
@@ -595,26 +607,33 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                   <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h3 id="saved-lot-payment-heading" className="text-sm font-black text-slate-900">Lot payment tracker</h3>
-                      <p className="text-xs text-slate-600">Per-lot advance and final payment calculations at 1 USD = {(order.exchangeRateUsdToAed || 3.6725).toFixed(4)} AED.</p>
+                      <p className="text-xs text-slate-600">Lot totals and final amounts are shown in AED first. The final amount is reduced only after the advance is recorded.</p>
                     </div>
                     <span className="w-fit rounded-full border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-bold text-blue-800">{order.lots.length} lots</span>
                   </div>
                   <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                    <table className="min-w-[650px] w-full text-left text-xs">
+                    <table className="min-w-[760px] w-full text-left text-xs">
                       <thead className="bg-slate-900 text-slate-100">
                         <tr>
                           <th className="px-3 py-2 font-bold">Lot</th>
                           <th className="px-3 py-2 font-bold">Quantity</th>
-                          <th className="px-3 py-2 font-bold">Advance paid</th>
-                          <th className="px-3 py-2 font-bold">Final payment due</th>
+                          <th className="px-3 py-2 font-bold">Lot total</th>
+                          <th className="px-3 py-2 font-bold">Advance</th>
+                          <th className="px-3 py-2 font-bold">Final amount</th>
                           <th className="px-3 py-2 font-bold">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {order.lots.map((lot) => (
+                        {order.lots.map((lot) => {
+                          const lotTotal = getLotTotal(lot);
+                          return (
                           <tr key={lot.lot_number}>
                             <td className="px-3 py-2.5 font-black text-slate-900">Lot {lot.lot_number}</td>
                             <td className="px-3 py-2.5 font-semibold text-slate-700">{lot.quantity.toLocaleString()} MT</td>
+                            <td className="px-3 py-2.5">
+                              <div className="font-bold text-slate-800">{formatAED(lotTotal.aed)}</div>
+                              <div className="font-mono text-[10px] text-slate-500">{formatUSD(lotTotal.usd)}</div>
+                            </td>
                             <td className="px-3 py-2.5">
                               <div className="font-bold text-emerald-700">{formatAED(lot.advance_aed)}</div>
                               <div className="font-mono text-[10px] text-slate-500">{formatUSD(lot.advance_usd)}</div>
@@ -635,7 +654,8 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                               </span>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -655,22 +675,22 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 
                   <div className="mt-4 flex flex-col sm:flex-row items-center gap-3">
                     <div className="w-full sm:w-64 relative">
-                      <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">$</span>
+                      <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">AED</span>
                       <input
                         type="number"
-                        placeholder="Payment amount (USD)"
-                        value={paymentInputUSD}
-                        onChange={(e) => setPaymentInputUSD(e.target.value)}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-7 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                        placeholder="Payment amount (AED)"
+                        value={paymentInputAED}
+                        onChange={(e) => setPaymentInputAED(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-12 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                       />
                     </div>
 
                     <button
                       onClick={() => handleRecordPayment(false)}
-                      disabled={!paymentInputUSD || parseFloat(paymentInputUSD) <= 0}
+                      disabled={!paymentInputAED || parseFloat(paymentInputAED) <= 0}
                       className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition shadow"
                     >
-                      Record Partial Deposit
+                      Record Partial Payment
                     </button>
 
                     <button

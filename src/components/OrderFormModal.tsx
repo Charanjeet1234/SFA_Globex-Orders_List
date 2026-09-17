@@ -88,7 +88,10 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
   const isLotSplitOrder = isLotSplitEligible(quantity, unit);
   const lotPricing = { unitPriceUSD, unitPriceAED, exchangeRate };
-  const normalizedLots = isLotSplitOrder ? normalizeLots(lots, lotPricing) : [];
+  const advanceReceivedForOrder = hasAdvanceReceived({ currentStage: initialStage });
+  const normalizedLots = isLotSplitOrder
+    ? normalizeLots(lots, lotPricing, { advanceReceived: advanceReceivedForOrder })
+    : [];
   const hasLotConfiguration = normalizedLots.length > 0;
   const lotSummary = summarizeLots(normalizedLots);
   const lotDistributionValid = isValidLotDistribution(normalizedLots, quantity);
@@ -107,13 +110,13 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
       ? ((advancePaymentUSD / totalAmountUSD) * 100).toFixed(1)
       : "0.0";
 
-  // Balance Payment: Full Amount - Advance Payment
+  // The final amount remains the full lot total until its advance is received.
   const balancePaymentUSD = hasLotConfiguration
     ? lotSummary.balanceUSD
-    : Math.max(0, totalAmountUSD - (hasAdvanceReceived({ currentStage: initialStage }) ? advancePaymentUSD : 0));
+    : Math.max(0, totalAmountUSD - (advanceReceivedForOrder ? advancePaymentUSD : 0));
   const balancePaymentAED = hasLotConfiguration
     ? lotSummary.balanceAED
-    : Math.max(0, totalAmountAED - (hasAdvanceReceived({ currentStage: initialStage }) ? advancePaymentAED : 0));
+    : Math.max(0, totalAmountAED - (advanceReceivedForOrder ? advancePaymentAED : 0));
 
   // Sync initial company if available
   useEffect(() => {
@@ -510,6 +513,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
               unitPriceAED={unitPriceAED}
               exchangeRate={exchangeRate}
               lots={normalizedLots}
+              advanceReceived={advanceReceivedForOrder}
               defaultAdvancePercent={advancePercent}
               onLotsChange={(nextLots) => {
                 setLotSubmitError(null);
@@ -585,7 +589,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <p className="font-black text-blue-950">Lot-level payment setup is active</p>
-                    <p className="mt-0.5 text-slate-600">Edit the advance for each lot in the configuration panel above. Totals below are calculated from those lots.</p>
+                    <p className="mt-0.5 text-slate-600">Edit the advance for each lot above. The final amount stays at the full lot total until the advance is received.</p>
                   </div>
                   <span className="rounded-full bg-white px-2.5 py-1 font-bold text-blue-800 ring-1 ring-blue-200">
                     {normalizedLots.length} lots configured
@@ -786,7 +790,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
                 <div className="text-[10px] font-bold text-emerald-800 uppercase">
-                  {hasLotConfiguration ? 'Total Lot Advance Paid' : hasAdvanceReceived({ currentStage: initialStage }) ? 'Advance Paid' : 'Advance'}
+                  {hasLotConfiguration ? 'Total Lot Advance' : 'Advance'}
                 </div>
                 <div className="text-base font-black text-emerald-700 mt-0.5">
                   {formatAED(advancePaymentAED)}
@@ -798,9 +802,9 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-300">
                 <div className="text-[10px] font-bold text-amber-900 uppercase flex items-center justify-between">
-                  <span>{hasLotConfiguration ? 'Total Pending Balance' : 'Balance Due'}</span>
+                  <span>{hasLotConfiguration ? 'Total Lot Final Amount' : 'Balance Due'}</span>
                   <span className="text-[9px] font-mono font-semibold">
-                    {hasLotConfiguration ? 'Sum of lot final payments' : hasAdvanceReceived({ currentStage: initialStage }) ? 'Full - Advance' : 'Full Amount'}
+                    {hasLotConfiguration ? (advanceReceivedForOrder ? 'After advance' : 'Full lot totals') : advanceReceivedForOrder ? 'Full - Advance' : 'Full Amount'}
                   </span>
                 </div>
                 <div className="text-base font-black text-amber-800 mt-0.5">

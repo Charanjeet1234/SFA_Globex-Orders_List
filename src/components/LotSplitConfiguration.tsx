@@ -4,6 +4,7 @@ import { Order, OrderLot } from '../types';
 import { formatAED, formatUSD } from '../utils/pdfGenerator';
 import {
   createLots,
+  getLotTotal,
   isLotSplitEligible,
   isValidLotDistribution,
   normalizeLots,
@@ -17,6 +18,7 @@ interface LotSplitConfigurationProps {
   unitPriceAED: number;
   exchangeRate: number;
   lots: OrderLot[];
+  advanceReceived: boolean;
   defaultAdvancePercent?: number;
   onLotsChange: (lots: OrderLot[]) => void;
 }
@@ -40,12 +42,14 @@ export function LotSplitConfiguration({
   unitPriceAED,
   exchangeRate,
   lots,
+  advanceReceived,
   defaultAdvancePercent = 20,
   onLotsChange,
 }: LotSplitConfigurationProps) {
   const [customLotCount, setCustomLotCount] = useState(5);
   const pricing = { unitPriceUSD, unitPriceAED, exchangeRate };
-  const normalizedLots = normalizeLots(lots, pricing);
+  const paymentState = { advanceReceived };
+  const normalizedLots = normalizeLots(lots, pricing, paymentState);
   const summary = summarizeLots(normalizedLots);
   const isDistributionValid = isValidLotDistribution(normalizedLots, quantity);
 
@@ -64,14 +68,14 @@ export function LotSplitConfiguration({
     const nextLots = normalizedLots.map((lot, lotIndex) => (
       lotIndex === index ? { ...lot, ...updates } : lot
     ));
-    onLotsChange(normalizeLots(nextLots, pricing));
+    onLotsChange(normalizeLots(nextLots, pricing, paymentState));
   };
 
   const setAdvancePercentageForAll = (percentage: number) => {
     onLotsChange(normalizeLots(normalizedLots.map((lot) => ({
       ...lot,
       advance_usd: Math.round(lot.quantity * unitPriceUSD * (percentage / 100)),
-    })), pricing));
+    })), pricing, paymentState));
   };
 
   return (
@@ -86,7 +90,7 @@ export function LotSplitConfiguration({
               Split into Lots
             </h3>
             <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-slate-600">
-              This {quantity.toLocaleString()} MT order is above the 224 MT threshold. Allocate shipment lots and set each lot&apos;s paid advance independently.
+              This {quantity.toLocaleString()} MT order is above the 224 MT threshold. Allocate shipment lots and set the advance for each lot independently.
             </p>
           </div>
         </div>
@@ -172,16 +176,17 @@ export function LotSplitConfiguration({
                 <tr>
                   <th className="px-3 py-2.5 font-bold">Lot</th>
                   <th className="px-3 py-2.5 font-bold">Quantity (MT)</th>
-                  <th className="px-3 py-2.5 font-bold">Lot value</th>
-                  <th className="px-3 py-2.5 font-bold">Advance paid (USD)</th>
-                  <th className="px-3 py-2.5 font-bold">Final payment due</th>
+                  <th className="px-3 py-2.5 font-bold">Lot total</th>
+                  <th className="px-3 py-2.5 font-bold">Advance (AED)</th>
+                  <th className="px-3 py-2.5 font-bold">Final amount</th>
                   <th className="px-3 py-2.5 font-bold">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {normalizedLots.map((lot, index) => {
-                  const lotValueUSD = Math.round(lot.quantity * unitPriceUSD);
-                  const lotValueAED = Math.round(lot.quantity * unitPriceAED);
+                  const lotValue = getLotTotal(lot);
+                  const lotValueUSD = lotValue.usd;
+                  const lotValueAED = lotValue.aed;
                   return (
                     <tr key={lot.lot_number} className="align-top">
                       <td className="px-3 py-3 font-black text-slate-900">Lot {lot.lot_number}</td>
@@ -202,22 +207,28 @@ export function LotSplitConfiguration({
                       </td>
                       <td className="px-3 py-2">
                         <div className="relative">
-                          <span className="absolute left-2 top-1.5 text-slate-400">$</span>
+                          <span className="absolute left-2 top-1.5 text-[10px] font-bold text-slate-400">AED</span>
                           <input
-                            aria-label={`Lot ${lot.lot_number} advance paid in USD`}
+                            aria-label={`Lot ${lot.lot_number} advance in AED`}
                             type="number"
                             min="0"
-                            max={lotValueUSD}
-                            value={lot.advance_usd}
-                            onChange={(event) => updateLot(index, { advance_usd: Math.min(lotValueUSD, Math.max(0, Number(event.target.value) || 0)) })}
-                            className="w-28 rounded-lg border border-slate-300 py-1.5 pl-5 pr-2 font-bold text-slate-900 outline-none focus:border-blue-500"
+                            max={lotValueAED}
+                            value={lot.advance_aed}
+                            onChange={(event) => {
+                              const advanceAED = Math.min(lotValueAED, Math.max(0, Number(event.target.value) || 0));
+                              updateLot(index, { advance_usd: Math.min(lotValueUSD, Math.round(advanceAED / exchangeRate)) });
+                            }}
+                            className="w-32 rounded-lg border border-slate-300 py-1.5 pl-10 pr-2 font-bold text-slate-900 outline-none focus:border-blue-500"
                           />
                         </div>
-                        <div className="mt-1 text-[10px] font-medium text-emerald-700">{formatAED(lot.advance_aed)}</div>
+                        <div className="mt-1 font-mono text-[10px] font-medium text-emerald-700">{formatUSD(lot.advance_usd)}</div>
                       </td>
                       <td className="px-3 py-3">
                         <div className="font-bold text-amber-800">{formatAED(lot.balance_aed)}</div>
                         <div className="mt-0.5 font-mono text-[10px] text-slate-500">{formatUSD(lot.balance_usd)}</div>
+                        <div className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                          {advanceReceived ? 'After advance' : 'Full lot total'}
+                        </div>
                       </td>
                       <td className="px-3 py-3">
                         <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-black ${statusStyles[lot.status]}`}>

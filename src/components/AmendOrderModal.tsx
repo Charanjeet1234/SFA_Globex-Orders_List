@@ -102,7 +102,10 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
   const advancePaymentAED = convertUsdToAed(advancePaymentUSD, exchangeRate);
   const isLotSplitOrder = isLotSplitEligible(quantity, unit);
   const lotPricing = { unitPriceUSD, unitPriceAED, exchangeRate };
-  const normalizedLots = isLotSplitOrder ? normalizeLots(lots, lotPricing) : [];
+  const advanceReceivedForOrder = hasAdvanceReceived({ ...order, currentStage });
+  const normalizedLots = isLotSplitOrder
+    ? normalizeLots(lots, lotPricing, { advanceReceived: advanceReceivedForOrder })
+    : [];
   const hasLotConfiguration = normalizedLots.length > 0;
   const lotSummary = summarizeLots(normalizedLots);
   const lotDistributionValid = isValidLotDistribution(normalizedLots, quantity);
@@ -462,6 +465,7 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
               unitPriceAED={unitPriceAED}
               exchangeRate={exchangeRate}
               lots={normalizedLots}
+              advanceReceived={advanceReceivedForOrder}
               onLotsChange={(nextLots) => {
                 setLotSubmitError(null);
                 setLots(nextLots);
@@ -510,7 +514,7 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
             {hasLotConfiguration ? (
               <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs text-slate-700">
                 <p className="font-black text-blue-950">Lot-level payments are active</p>
-                <p className="mt-1 leading-relaxed">Update each lot&apos;s advance in the split configuration above. The order-level advance and pending balance are aggregated automatically.</p>
+                <p className="mt-1 leading-relaxed">Update each lot&apos;s advance above. The final amount remains the full lot total until the advance is recorded.</p>
               </div>
             ) : (
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
@@ -667,12 +671,12 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
                 </div>
               </div>
               <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700">
-                <span className="text-slate-400 block text-[11px]">{hasLotConfiguration ? 'Total Lot Advance Paid' : 'Advance Received/Agreed'}</span>
+                <span className="text-slate-400 block text-[11px]">{hasLotConfiguration ? 'Total Lot Advance' : 'Advance'}</span>
                 <span className="text-base font-black text-emerald-400 block mt-0.5">{formatAED(effectiveAdvancePaymentAED)}</span>
                 <span className="text-[11px] text-slate-400 font-mono">{formatUSD(effectiveAdvancePaymentUSD)}</span>
               </div>
               <div className="bg-slate-800/80 p-3 rounded-lg border border-amber-500/40">
-                <span className="text-amber-300 block text-[11px] font-semibold">{hasLotConfiguration ? 'Total Pending Balance' : `Balance Payment (${hasAdvanceReceived({ ...order, currentStage }) ? 'Full - Advance' : 'Full Amount'})`}</span>
+                <span className="text-amber-300 block text-[11px] font-semibold">{hasLotConfiguration ? `Total Lot Final Amount (${advanceReceivedForOrder ? 'After Advance' : 'Full Lot Totals'})` : `Balance Payment (${advanceReceivedForOrder ? 'Full - Advance' : 'Full Amount'})`}</span>
                 <span className="text-base font-black text-amber-400 block mt-0.5">{formatAED(balancePaymentAED)}</span>
                 <span className="text-[11px] text-slate-400 font-mono">{formatUSD(balancePaymentUSD)}</span>
               </div>

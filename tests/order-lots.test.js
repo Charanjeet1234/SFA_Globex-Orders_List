@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  applyLotAdvancePayment,
   createLots,
   distributeLotQuantities,
   isLotSplitEligible,
@@ -30,7 +31,7 @@ test('lot financials calculate balances and statuses in USD and AED', () => {
     { ...lots[0], advance_usd: 100000 },
     { ...lots[1], advance_usd: 0 },
     { ...lots[2], advance_usd: 83330 },
-  ], pricing);
+  ], pricing, { advanceReceived: true });
   const summary = summarizeLots(normalized);
 
   assert.equal(isValidLotDistribution(normalized, 250), true);
@@ -39,6 +40,27 @@ test('lot financials calculate balances and statuses in USD and AED', () => {
   assert.equal(normalized[2].status, 'partially_paid');
   assert.equal(summary.advanceUSD + summary.balanceUSD, 250000);
   assert.equal(summary.advanceAED + summary.balanceAED, 918250);
+});
+
+test('a configured advance leaves the full lot amount due until it is received', () => {
+  const lots = createLots({ quantity: 250, lotCount: 3, advancePercent: 20, ...pricing });
+  const planned = normalizeLots(lots, pricing);
+  const received = normalizeLots(lots, pricing, { advanceReceived: true });
+
+  assert.ok(planned.every((lot) => lot.status === 'pending'));
+  assert.equal(summarizeLots(planned).balanceUSD, 250000);
+  assert.equal(summarizeLots(planned).balanceAED, 918250);
+  assert.equal(summarizeLots(received).balanceUSD, 200000);
+  assert.ok(received.every((lot) => lot.status === 'partially_paid'));
+});
+
+test('a recorded lot payment is applied to agreed advances before final amounts', () => {
+  const lots = createLots({ quantity: 250, lotCount: 3, advancePercent: 20, ...pricing });
+  const paidLots = applyLotAdvancePayment(lots, 30000, pricing);
+
+  assert.equal(summarizeLots(paidLots).paidAdvanceUSD, 30000);
+  assert.equal(summarizeLots(paidLots).balanceUSD, 220000);
+  assert.equal(paidLots[0].status, 'partially_paid');
 });
 
 test('order persistence keeps lot payloads and derives order-level payment totals', () => {
@@ -61,6 +83,12 @@ test('order persistence keeps lot payloads and derives order-level payment total
   ]);
   assert.equal(normalizedOrder.advancePaymentUSD, 50000);
   assert.equal(normalizedOrder.advancePaymentAED, 183625);
-  assert.equal(normalizedOrder.balancePaymentUSD, 200000);
-  assert.equal(normalizedOrder.balancePaymentAED, 734625);
+  assert.equal(normalizedOrder.balancePaymentUSD, 250000);
+  assert.equal(normalizedOrder.balancePaymentAED, 918250);
+  assert.ok(normalizedOrder.lots.every((lot) => lot.status === 'pending'));
+
+  const orderAfterAdvance = normalizeOrderPayments({ ...normalizedOrder, currentStage: 'advance_received' });
+  assert.equal(orderAfterAdvance.balancePaymentUSD, 200000);
+  assert.equal(orderAfterAdvance.balancePaymentAED, 734625);
+  assert.ok(orderAfterAdvance.lots.every((lot) => lot.status === 'partially_paid'));
 });
