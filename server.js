@@ -7,6 +7,7 @@ import dotenv from 'dotenv';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { getAdminEmail, isAdminEmail, isAdminUser, requiresAdminEmail } from './lib/admin-access.js';
 
 const projectDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -14,6 +15,11 @@ dotenv.config({ path: path.join(projectDirectory, '.env.local'), quiet: true });
 const databasePath = process.env.SFA_DATABASE_PATH || path.join(projectDirectory, 'data', 'sfa-globex.sqlite');
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || '127.0.0.1';
+const developmentLogin = process.env.NODE_ENV === 'production' ? null : {
+  email: (process.env.SFA_DEV_LOGIN_EMAIL || 'developer@sfa.local').trim().toLowerCase(),
+  password: process.env.SFA_DEV_LOGIN_PASSWORD || 'SFA-Local-Dev-2026!',
+  sessionToken: randomBytes(32).toString('hex'),
+};
 
 mkdirSync(path.dirname(databasePath), { recursive: true });
 
@@ -69,6 +75,28 @@ function orderIdFromPath(value) {
   } catch {
     throw new Error('The order URL contains an invalid order ID.');
   }
+}
+
+function safelyMatches(value, expected) {
+  const actualBuffer = Buffer.from(String(value || ''));
+  const expectedBuffer = Buffer.from(String(expected || ''));
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function cookieValue(request, name) {
+  const entry = String(request.headers.cookie || '').split(';').map((value) => value.trim()).find((value) => value.startsWith(`${name}=`));
+  return entry ? decodeURIComponent(entry.slice(name.length + 1)) : '';
+}
+
+function developmentUserFromRequest(request) {
+  if (!developmentLogin || !safelyMatches(cookieValue(request, 'sfa_dev_session'), developmentLogin.sessionToken)) {
+    return null;
+  }
+  return {
+    id: 'sfa-local-development-admin',
+    email: developmentLogin.email,
+    name: 'Local Development Administrator',
+  };
 }
 
 function requestHeaders(headers) {
@@ -308,8 +336,52 @@ app.all('/api/auth/*', async (request, response, next) => {
 // Auth requests must retain their raw request stream for the Neon proxy.
 app.use(express.json({ limit: '1mb' }));
 
+app.get('/api/development/session', (request, response) => {
+  const user = developmentUserFromRequest(request);
+  if (!user) {
+    response.status(401).json({ error: 'No local development session.' });
+    return;
+  }
+  response.setHeader('Cache-Control', 'no-store');
+  response.json({ user });
+});
+
+app.post('/api/development/sign-in', (request, response) => {
+  if (!developmentLogin) {
+    response.status(404).json({ error: 'Development login is unavailable in production.' });
+    return;
+  }
+
+  const email = String(request.body?.email || '').trim().toLowerCase();
+  const password = String(request.body?.password || '');
+  if (!safelyMatches(email, developmentLogin.email) || !safelyMatches(password, developmentLogin.password)) {
+    response.status(401).json({ error: 'Invalid development login details.' });
+    return;
+  }
+
+  response.cookie('sfa_dev_session', developmentLogin.sessionToken, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: false,
+    maxAge: 60 * 60 * 1000,
+  });
+  response.json({ user: developmentUserFromRequest({ headers: { cookie: `sfa_dev_session=${developmentLogin.sessionToken}` } }) });
+});
+
+app.post('/api/development/sign-out', (_request, response) => {
+  response.clearCookie('sfa_dev_session', { httpOnly: true, sameSite: 'lax', secure: false });
+  response.status(204).end();
+});
+
 app.use('/api', async (request, response, next) => {
   try {
+    const developmentUser = developmentUserFromRequest(request);
+    if (developmentUser) {
+      response.locals.user = developmentUser;
+      next();
+      return;
+    }
+
     if (!process.env.NEON_AUTH_BASE_URL || !process.env.NEON_AUTH_COOKIE_SECRET) {
       response.status(503).json({ error: 'Authentication is not configured for local development.' });
       return;

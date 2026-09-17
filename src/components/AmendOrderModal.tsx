@@ -13,11 +13,13 @@ import {
   CheckCircle2,
   Clock
 } from 'lucide-react';
-import { Order, Company, OrderStage, ORDER_STAGES } from '../types';
+import { Order, Company, OrderLot, OrderStage, ORDER_STAGES } from '../types';
 import { formatUSD, formatAED, convertUsdToAed } from '../utils/pdfGenerator';
 import { computeSHA256 } from '../utils/encryption';
 import { AedRateSelector } from './AedRateSelector';
+import { LotSplitConfiguration } from './LotSplitConfiguration';
 import { SFA_PRODUCT_CATALOG } from '../utils/mockData';
+import { isLotSplitEligible, isValidLotDistribution, normalizeLots, summarizeLots } from '../../lib/order-lots.js';
 
 interface AmendOrderModalProps {
   order: Order | null;
@@ -72,6 +74,8 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
   // Advance payment state
   const [advancePaymentUSD, setAdvancePaymentUSD] = useState<number>(order.advancePaymentUSD);
   const [advanceMode, setAdvanceMode] = useState<'percent' | 'custom_usd' | 'custom_aed'>('custom_usd');
+  const [lots, setLots] = useState<OrderLot[]>(order.lots || []);
+  const [lotSubmitError, setLotSubmitError] = useState<string | null>(null);
   
   // Stage & PI Status
   const [currentStage, setCurrentStage] = useState<OrderStage>(order.currentStage);
@@ -96,10 +100,24 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
   const totalAmountUSD = Math.round(quantity * unitPriceUSD);
   const totalAmountAED = Math.round(quantity * unitPriceAED);
   const advancePaymentAED = convertUsdToAed(advancePaymentUSD, exchangeRate);
+  const isLotSplitOrder = isLotSplitEligible(quantity, unit);
+  const lotPricing = { unitPriceUSD, unitPriceAED, exchangeRate };
+  const normalizedLots = isLotSplitOrder ? normalizeLots(lots, lotPricing) : [];
+  const hasLotConfiguration = normalizedLots.length > 0;
+  const lotSummary = summarizeLots(normalizedLots);
+  const lotDistributionValid = isValidLotDistribution(normalizedLots, quantity);
+  const effectiveAdvancePaymentUSD = hasLotConfiguration ? lotSummary.advanceUSD : advancePaymentUSD;
+  const effectiveAdvancePaymentAED = hasLotConfiguration ? lotSummary.advanceAED : advancePaymentAED;
   
   // Balance calculation: Full Amount - Advance Payment
   const { balancePaymentUSD, balancePaymentAED } = normalizeOrderPayments({
-    ...order, currentStage, totalAmountUSD, totalAmountAED, advancePaymentUSD, advancePaymentAED,
+    ...order,
+    currentStage,
+    totalAmountUSD,
+    totalAmountAED,
+    advancePaymentUSD: effectiveAdvancePaymentUSD,
+    advancePaymentAED: effectiveAdvancePaymentAED,
+    lots: hasLotConfiguration ? normalizedLots : undefined,
   });
 
   // Handle stage change
@@ -140,6 +158,13 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isLotSplitOrder && (!hasLotConfiguration || !lotDistributionValid)) {
+      setLotSubmitError(hasLotConfiguration
+        ? 'Lot quantities must add up exactly to the order quantity before saving.'
+        : 'Choose a lot distribution for this order before saving.');
+      return;
+    }
 
     const selectedCompany = companies.find(c => c.id === companyId) || {
       id: order.companyId,
@@ -194,10 +219,11 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
       unitPriceAED,
       totalAmountUSD,
       totalAmountAED,
-      advancePaymentUSD,
-      advancePaymentAED,
+      advancePaymentUSD: effectiveAdvancePaymentUSD,
+      advancePaymentAED: effectiveAdvancePaymentAED,
       balancePaymentUSD,
       balancePaymentAED,
+      lots: hasLotConfiguration ? normalizedLots : undefined,
       currentStage,
       isWaitingForBuyerPI,
       stagesHistory: updatedStagesHistory,
@@ -400,7 +426,11 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
                   required
                   min="1"
                   value={quantity}
-                  onChange={(e) => setQuantity(Math.max(1, Number(e.target.value)))}
+                  step="0.01"
+                  onChange={(e) => {
+                    setLotSubmitError(null);
+                    setQuantity(Math.max(1, Number(e.target.value) || 0));
+                  }}
                   className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:border-blue-500 focus:outline-none"
                 />
               </div>
@@ -410,7 +440,10 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
                 </label>
                 <select
                   value={unit}
-                  onChange={(e) => setUnit(e.target.value as Order['unit'])}
+                  onChange={(e) => {
+                    setLotSubmitError(null);
+                    setUnit(e.target.value as Order['unit']);
+                  }}
                   className="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white focus:border-blue-500 focus:outline-none"
                 >
                   <option value="MT">Metric Ton (MT)</option>
@@ -421,6 +454,24 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
                 </select>
               </div>
             </div>
+
+            <LotSplitConfiguration
+              quantity={quantity}
+              unit={unit}
+              unitPriceUSD={unitPriceUSD}
+              unitPriceAED={unitPriceAED}
+              exchangeRate={exchangeRate}
+              lots={normalizedLots}
+              onLotsChange={(nextLots) => {
+                setLotSubmitError(null);
+                setLots(nextLots);
+              }}
+            />
+            {lotSubmitError && (
+              <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">
+                {lotSubmitError}
+              </p>
+            )}
           </div>
 
           {/* Section: AED Exchange Rate Selector (3.6725, 3.6745, or Custom) */}
@@ -456,6 +507,12 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
             </div>
 
             {/* Advance payment amendment options */}
+            {hasLotConfiguration ? (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs text-slate-700">
+                <p className="font-black text-blue-950">Lot-level payments are active</p>
+                <p className="mt-1 leading-relaxed">Update each lot&apos;s advance in the split configuration above. The order-level advance and pending balance are aggregated automatically.</p>
+              </div>
+            ) : (
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -591,6 +648,7 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
                 </div>
               )}
             </div>
+            )}
           </div>
 
           {/* Real-time Calculation Summary: Full Amount - Advance Payment = Balance Payment */}
@@ -609,12 +667,12 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
                 </div>
               </div>
               <div className="bg-slate-800/80 p-3 rounded-lg border border-slate-700">
-                <span className="text-slate-400 block text-[11px]">Advance Received/Agreed</span>
-                <span className="text-base font-black text-emerald-400 block mt-0.5">{formatAED(advancePaymentAED)}</span>
-                <span className="text-[11px] text-slate-400 font-mono">{formatUSD(advancePaymentUSD)}</span>
+                <span className="text-slate-400 block text-[11px]">{hasLotConfiguration ? 'Total Lot Advance Paid' : 'Advance Received/Agreed'}</span>
+                <span className="text-base font-black text-emerald-400 block mt-0.5">{formatAED(effectiveAdvancePaymentAED)}</span>
+                <span className="text-[11px] text-slate-400 font-mono">{formatUSD(effectiveAdvancePaymentUSD)}</span>
               </div>
               <div className="bg-slate-800/80 p-3 rounded-lg border border-amber-500/40">
-                <span className="text-amber-300 block text-[11px] font-semibold">Balance Payment ({hasAdvanceReceived({ ...order, currentStage }) ? 'Full - Advance' : 'Full Amount'})</span>
+                <span className="text-amber-300 block text-[11px] font-semibold">{hasLotConfiguration ? 'Total Pending Balance' : `Balance Payment (${hasAdvanceReceived({ ...order, currentStage }) ? 'Full - Advance' : 'Full Amount'})`}</span>
                 <span className="text-base font-black text-amber-400 block mt-0.5">{formatAED(balancePaymentAED)}</span>
                 <span className="text-[11px] text-slate-400 font-mono">{formatUSD(balancePaymentUSD)}</span>
               </div>

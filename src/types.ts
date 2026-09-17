@@ -100,6 +100,22 @@ export interface Company {
 
 export type AedRatePreset = '3.6725' | '3.6745' | 'custom';
 
+export type LotPaymentStatus = 'fully_paid' | 'partially_paid' | 'pending';
+
+/**
+ * Serialized with an order when a large MT order is split for shipment and
+ * payment tracking. The snake_case keys intentionally match the API payload.
+ */
+export interface OrderLot {
+  lot_number: number;
+  quantity: number;
+  advance_usd: number;
+  advance_aed: number;
+  balance_usd: number;
+  balance_aed: number;
+  status: LotPaymentStatus;
+}
+
 export interface Order {
   id: string; // e.g. "NX-2026-108"
   orderNumber: string;
@@ -120,6 +136,7 @@ export interface Order {
   advancePaymentAED: number;
   balancePaymentUSD: number; // Total less confirmed payments; planned advance is not deducted.
   balancePaymentAED: number; // Total less confirmed payments in AED.
+  lots?: OrderLot[];
 
   // Lifecycle & Stages
   currentStage: OrderStage;

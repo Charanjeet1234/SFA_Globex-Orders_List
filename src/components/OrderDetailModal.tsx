@@ -590,6 +590,58 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 
               </div>
 
+              {order.lots && order.lots.length > 0 && (
+                <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4" aria-labelledby="saved-lot-payment-heading">
+                  <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 id="saved-lot-payment-heading" className="text-sm font-black text-slate-900">Lot payment tracker</h3>
+                      <p className="text-xs text-slate-600">Per-lot advance and final payment calculations at 1 USD = {(order.exchangeRateUsdToAed || 3.6725).toFixed(4)} AED.</p>
+                    </div>
+                    <span className="w-fit rounded-full border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-bold text-blue-800">{order.lots.length} lots</span>
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="min-w-[650px] w-full text-left text-xs">
+                      <thead className="bg-slate-900 text-slate-100">
+                        <tr>
+                          <th className="px-3 py-2 font-bold">Lot</th>
+                          <th className="px-3 py-2 font-bold">Quantity</th>
+                          <th className="px-3 py-2 font-bold">Advance paid</th>
+                          <th className="px-3 py-2 font-bold">Final payment due</th>
+                          <th className="px-3 py-2 font-bold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {order.lots.map((lot) => (
+                          <tr key={lot.lot_number}>
+                            <td className="px-3 py-2.5 font-black text-slate-900">Lot {lot.lot_number}</td>
+                            <td className="px-3 py-2.5 font-semibold text-slate-700">{lot.quantity.toLocaleString()} MT</td>
+                            <td className="px-3 py-2.5">
+                              <div className="font-bold text-emerald-700">{formatAED(lot.advance_aed)}</div>
+                              <div className="font-mono text-[10px] text-slate-500">{formatUSD(lot.advance_usd)}</div>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <div className="font-bold text-amber-800">{formatAED(lot.balance_aed)}</div>
+                              <div className="font-mono text-[10px] text-slate-500">{formatUSD(lot.balance_usd)}</div>
+                            </td>
+                            <td className="px-3 py-2.5">
+                              <span className={`rounded-full border px-2 py-1 text-[10px] font-black ${
+                                lot.status === 'fully_paid'
+                                  ? 'border-emerald-200 bg-emerald-100 text-emerald-800'
+                                  : lot.status === 'partially_paid'
+                                    ? 'border-amber-200 bg-amber-100 text-amber-800'
+                                    : 'border-slate-200 bg-slate-100 text-slate-700'
+                              }`}>
+                                {lot.status === 'fully_paid' ? 'Fully Paid' : lot.status === 'partially_paid' ? 'Partially Paid' : 'Pending'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
               {/* Payment Settlement Action Box */}
               {userRole !== 'auditor' && order.balancePaymentUSD > 0 && (
                 <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-800 shadow-md">

@@ -32,6 +32,7 @@ import {
 import { 
   DeleteOrderModal 
 } from './components/DeleteOrderModal';
+import { DevelopmentLogin, type DevelopmentSessionUser } from './components/DevelopmentLogin';
 
 import { 
   Order, 
@@ -59,6 +60,7 @@ import {
 import { databaseApi, DatabaseState } from './api';
 import { authClient } from './auth';
 const sessionAuth = authClient;
+const IS_LOCAL_DEVELOPMENT = import.meta.env.DEV;
 
 const LEGACY_STORAGE_KEY_ORDERS = 'sfa_globex_orders_v2';
 const LEGACY_STORAGE_KEY_COMPANIES = 'sfa_globex_companies_v2';
@@ -102,6 +104,8 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAccessChecking, setIsAccessChecking] = useState(false);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [developmentUser, setDevelopmentUser] = useState<DevelopmentSessionUser | null>(null);
+  const [isDevelopmentSessionLoading, setIsDevelopmentSessionLoading] = useState(IS_LOCAL_DEVELOPMENT);
 
   // Search & Year Filters
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -126,10 +130,50 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (isAuthLoading) return;
+    if (!IS_LOCAL_DEVELOPMENT) {
+      setIsDevelopmentSessionLoading(false);
+      return;
+    }
+
+    let isCurrent = true;
+    void fetch('/api/development/session', { credentials: 'include', cache: 'no-store' })
+      .then(async (response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (isCurrent && result?.user) setDevelopmentUser(result.user);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (isCurrent) setIsDevelopmentSessionLoading(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isAuthLoading && !developmentUser) return;
 
     const authUser = neonSession?.user;
     if (!authUser) {
+      if (developmentUser) {
+        setAuthMessage(null);
+        setIsAccessChecking(false);
+        setCurrentUser({
+          id: developmentUser.id,
+          username: developmentUser.email.split('@')[0] || 'developer',
+          name: developmentUser.name,
+          email: developmentUser.email,
+          role: 'owner',
+          roleTitle: 'Local Development Administrator',
+          mfaEnabled: false,
+          mfaVerified: true,
+          lastLogin: new Date().toISOString(),
+        });
+        saveSession(developmentUser.id);
+        setIsAuthenticated(true);
+        return;
+      }
       localStorage.removeItem(SESSION_STORAGE_KEY);
       setIsAccessChecking(false);
       setIsAuthenticated(false);
@@ -178,7 +222,7 @@ export default function App() {
     return () => {
       isCurrent = false;
     };
-  }, [isAuthLoading, neonSession]);
+  }, [developmentUser, isAuthLoading, neonSession]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -564,10 +608,14 @@ export default function App() {
   const handleLockSession = () => {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     setIsAuthenticated(false);
+    if (developmentUser) {
+      setDevelopmentUser(null);
+      void fetch('/api/development/sign-out', { method: 'POST', credentials: 'include' });
+    }
     void sessionAuth.signOut();
   };
 
-  if (isAuthLoading || isAccessChecking) {
+  if ((isAuthLoading && !developmentUser) || isDevelopmentSessionLoading || isAccessChecking) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans">
         <div className="text-center space-y-3">
@@ -607,6 +655,9 @@ export default function App() {
               <p className="mb-5 text-center text-xs leading-relaxed text-slate-400">
                 Use your email address as your username. Create an account, sign in with a password, use Google, or reset a forgotten password.
               </p>
+              {IS_LOCAL_DEVELOPMENT && (
+                <DevelopmentLogin onAuthenticated={setDevelopmentUser} />
+              )}
               <AuthView pathname={window.location.pathname} className="mx-auto max-w-none border-0 bg-transparent p-0 shadow-none" />
           </div>
 

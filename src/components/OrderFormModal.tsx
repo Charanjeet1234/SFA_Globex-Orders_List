@@ -14,11 +14,13 @@ import {
   FileCheck,
   Clock,
 } from "lucide-react";
-import { Order, Company, OrderStage, ORDER_STAGES } from "../types";
+import { Order, Company, OrderLot, OrderStage, ORDER_STAGES } from "../types";
 import { formatUSD, formatAED, convertUsdToAed } from "../utils/pdfGenerator";
 import { computeSHA256 } from "../utils/encryption";
 import { AedRateSelector } from "./AedRateSelector";
+import { LotSplitConfiguration } from "./LotSplitConfiguration";
 import { SFA_PRODUCT_CATALOG } from "../utils/mockData";
+import { isLotSplitEligible, isValidLotDistribution, normalizeLots, summarizeLots } from "../../lib/order-lots.js";
 
 interface OrderFormModalProps {
   isOpen: boolean;
@@ -54,6 +56,8 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   const [advanceMode, setAdvanceMode] = useState<
     "percent" | "custom_usd" | "custom_aed"
   >("percent");
+  const [lots, setLots] = useState<OrderLot[]>([]);
+  const [lotSubmitError, setLotSubmitError] = useState<string | null>(null);
 
   // New specific requirement: Allow user to select that only PI issued from company and waiting for PI to be signed from buyer
   const [isWaitingForBuyerPI, setIsWaitingForBuyerPI] = useState<boolean>(true);
@@ -82,20 +86,34 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   const totalAmountUSD = Math.round(quantity * unitPriceUSD);
   const totalAmountAED = Math.round(quantity * unitPriceAED);
 
-  // Advance Payment
-  const advancePaymentUSD =
+  const isLotSplitOrder = isLotSplitEligible(quantity, unit);
+  const lotPricing = { unitPriceUSD, unitPriceAED, exchangeRate };
+  const normalizedLots = isLotSplitOrder ? normalizeLots(lots, lotPricing) : [];
+  const hasLotConfiguration = normalizedLots.length > 0;
+  const lotSummary = summarizeLots(normalizedLots);
+  const lotDistributionValid = isValidLotDistribution(normalizedLots, quantity);
+
+  // Standard advance payment is retained for smaller orders. Large MT orders
+  // use the aggregate of their per-lot advances instead.
+  const standardAdvancePaymentUSD =
     advanceMode === "percent"
       ? Math.round(totalAmountUSD * (advancePercent / 100))
       : Math.min(totalAmountUSD, Math.max(0, customAdvanceUSD));
-  const advancePaymentAED = convertUsdToAed(advancePaymentUSD, exchangeRate);
+  const standardAdvancePaymentAED = convertUsdToAed(standardAdvancePaymentUSD, exchangeRate);
+  const advancePaymentUSD = hasLotConfiguration ? lotSummary.advanceUSD : standardAdvancePaymentUSD;
+  const advancePaymentAED = hasLotConfiguration ? lotSummary.advanceAED : standardAdvancePaymentAED;
   const effectiveAdvancePercent =
     totalAmountUSD > 0
       ? ((advancePaymentUSD / totalAmountUSD) * 100).toFixed(1)
       : "0.0";
 
   // Balance Payment: Full Amount - Advance Payment
-  const balancePaymentUSD = Math.max(0, totalAmountUSD - (hasAdvanceReceived({ currentStage: initialStage }) ? advancePaymentUSD : 0));
-  const balancePaymentAED = Math.max(0, totalAmountAED - (hasAdvanceReceived({ currentStage: initialStage }) ? advancePaymentAED : 0));
+  const balancePaymentUSD = hasLotConfiguration
+    ? lotSummary.balanceUSD
+    : Math.max(0, totalAmountUSD - (hasAdvanceReceived({ currentStage: initialStage }) ? advancePaymentUSD : 0));
+  const balancePaymentAED = hasLotConfiguration
+    ? lotSummary.balanceAED
+    : Math.max(0, totalAmountAED - (hasAdvanceReceived({ currentStage: initialStage }) ? advancePaymentAED : 0));
 
   // Sync initial company if available
   useEffect(() => {
@@ -127,6 +145,13 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isLotSplitOrder && (!hasLotConfiguration || !lotDistributionValid)) {
+      setLotSubmitError(hasLotConfiguration
+        ? 'Lot quantities must add up exactly to the order quantity before saving.'
+        : 'Choose a lot distribution for this order before saving.');
+      return;
+    }
 
     const normalizedOrderNumber = orderNumber.trim().toUpperCase();
     if (!normalizedOrderNumber) return;
@@ -209,6 +234,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
       advancePaymentAED,
       balancePaymentUSD,
       balancePaymentAED,
+      lots: hasLotConfiguration ? normalizedLots : undefined,
       currentStage: initialStage,
       isWaitingForBuyerPI,
       stagesHistory,
@@ -447,9 +473,11 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                   min="1"
                   required
                   value={quantity}
-                  onChange={(e) =>
-                    setQuantity(Math.max(1, parseInt(e.target.value) || 0))
-                  }
+                  step="0.01"
+                  onChange={(e) => {
+                    setLotSubmitError(null);
+                    setQuantity(Math.max(1, Number(e.target.value) || 0));
+                  }}
                   className="w-full text-xs p-2.5 rounded-xl border border-slate-300 focus:border-blue-500 focus:outline-none font-bold"
                 />
               </div>
@@ -460,7 +488,10 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                 </label>
                 <select
                   value={unit}
-                  onChange={(e) => setUnit(e.target.value as Order["unit"])}
+                  onChange={(e) => {
+                    setLotSubmitError(null);
+                    setUnit(e.target.value as Order["unit"]);
+                  }}
                   className="w-full text-xs p-2.5 rounded-xl border border-slate-300 bg-white focus:border-blue-500 focus:outline-none"
                 >
                   <option value="MT">Metric Tons (MT)</option>
@@ -471,6 +502,25 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                 </select>
               </div>
             </div>
+
+            <LotSplitConfiguration
+              quantity={quantity}
+              unit={unit}
+              unitPriceUSD={unitPriceUSD}
+              unitPriceAED={unitPriceAED}
+              exchangeRate={exchangeRate}
+              lots={normalizedLots}
+              defaultAdvancePercent={advancePercent}
+              onLotsChange={(nextLots) => {
+                setLotSubmitError(null);
+                setLots(nextLots);
+              }}
+            />
+            {lotSubmitError && (
+              <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">
+                {lotSubmitError}
+              </p>
+            )}
           </div>
 
           {/* Section 3: AED Rate Selection (3.6725 or 3.6745 and Custom) */}
@@ -530,6 +580,19 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
             </div>
 
             {/* Advance payment options */}
+            {hasLotConfiguration ? (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs text-slate-700">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-black text-blue-950">Lot-level payment setup is active</p>
+                    <p className="mt-0.5 text-slate-600">Edit the advance for each lot in the configuration panel above. Totals below are calculated from those lots.</p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 font-bold text-blue-800 ring-1 ring-blue-200">
+                    {normalizedLots.length} lots configured
+                  </span>
+                </div>
+              </div>
+            ) : (
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -697,6 +760,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                 </div>
               </div>
             </div>
+            )}
 
             {/* Live Financial Breakdown Highlight Box: Balance = Full Amount - Advance */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
@@ -722,7 +786,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
               <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
                 <div className="text-[10px] font-bold text-emerald-800 uppercase">
-                  {hasAdvanceReceived({ currentStage: initialStage }) ? 'Advance Paid' : 'Advance'}
+                  {hasLotConfiguration ? 'Total Lot Advance Paid' : hasAdvanceReceived({ currentStage: initialStage }) ? 'Advance Paid' : 'Advance'}
                 </div>
                 <div className="text-base font-black text-emerald-700 mt-0.5">
                   {formatAED(advancePaymentAED)}
@@ -734,9 +798,9 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-300">
                 <div className="text-[10px] font-bold text-amber-900 uppercase flex items-center justify-between">
-                  <span>Balance Due</span>
+                  <span>{hasLotConfiguration ? 'Total Pending Balance' : 'Balance Due'}</span>
                   <span className="text-[9px] font-mono font-semibold">
-                    {hasAdvanceReceived({ currentStage: initialStage }) ? 'Full - Advance' : 'Full Amount'}
+                    {hasLotConfiguration ? 'Sum of lot final payments' : hasAdvanceReceived({ currentStage: initialStage }) ? 'Full - Advance' : 'Full Amount'}
                   </span>
                 </div>
                 <div className="text-base font-black text-amber-800 mt-0.5">
