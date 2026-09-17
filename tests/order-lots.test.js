@@ -26,6 +26,18 @@ test('equal distribution retains the exact total quantity', () => {
   assert.equal(quantities.reduce((sum, value) => sum + value, 0), 227);
 });
 
+test('custom lot quantities preserve unequal customer allocations', () => {
+  const customLots = normalizeLots([
+    { lot_number: 1, quantity: 300, advance_usd: 60000, current_stage: 'pi_issued' },
+    { lot_number: 2, quantity: 204, advance_usd: 40800, current_stage: 'pi_issued' },
+  ], pricing);
+
+  assert.deepEqual(customLots.map((lot) => lot.quantity), [300, 204]);
+  assert.equal(isValidLotDistribution(customLots, 504), true);
+  assert.equal(isValidLotDistribution(customLots, 505), false);
+  assert.equal(summarizeLots(customLots).balanceUSD, 504000);
+});
+
 test('lot financials calculate balances and statuses in USD and AED', () => {
   const lots = createLots({ quantity: 250, lotCount: 3, advancePercent: 20, ...pricing });
   const normalized = normalizeLots([
