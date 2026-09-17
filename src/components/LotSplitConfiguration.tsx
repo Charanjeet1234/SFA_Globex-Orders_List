@@ -91,7 +91,7 @@ export function LotSplitConfiguration({
               Split into Lots
             </h3>
             <p className="mt-0.5 max-w-xl text-xs leading-relaxed text-slate-600">
-              This {quantity.toLocaleString()} MT order is above the 224 MT threshold. Every lot starts at the selected initial stage, then follows its own advance, shipment, BL, and final-payment progress independently.
+              This {quantity.toLocaleString()} MT order is above the 224 MT threshold. Choose 3, 4, or Custom (N lots), then edit each lot quantity below. Every lot starts at the selected initial stage and follows its own advance, shipment, BL, and final-payment progress independently.
             </p>
           </div>
         </div>
@@ -121,7 +121,7 @@ export function LotSplitConfiguration({
             : 'border-slate-200'
         }`}>
           <SlidersHorizontal className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-          <span className="font-bold text-slate-700">Custom</span>
+          <span className="font-bold text-slate-700">Custom (N lots)</span>
           <input
             aria-label="Custom number of lots"
             type="number"
@@ -143,7 +143,7 @@ export function LotSplitConfiguration({
 
       {normalizedLots.length === 0 ? (
         <div className="rounded-xl border border-dashed border-blue-300 bg-white/70 px-4 py-3 text-xs text-slate-600">
-          Choose 3, 4, or a custom number of lots to begin. Each lot starts with a {defaultAdvancePercent}% advance, which you can override below.
+          Choose 3, 4, or Custom (N lots) to begin. After the lots are created, edit the Quantity (MT) field for each lot to use your own allocation. The quantities must add up to exactly {quantity.toLocaleString()} MT before saving. Each lot starts with a {defaultAdvancePercent}% advance, which you can override below.
         </div>
       ) : (
         <>
@@ -176,7 +176,7 @@ export function LotSplitConfiguration({
               <thead className="bg-slate-900 text-slate-100">
                 <tr>
                   <th className="px-3 py-2.5 font-bold">Lot</th>
-                  <th className="px-3 py-2.5 font-bold">Quantity (MT)</th>
+                  <th className="px-3 py-2.5 font-bold">Quantity (MT) · Edit</th>
                   <th className="px-3 py-2.5 font-bold">Lot total</th>
                   <th className="px-3 py-2.5 font-bold">Advance (AED)</th>
                   <th className="px-3 py-2.5 font-bold">Final amount</th>
