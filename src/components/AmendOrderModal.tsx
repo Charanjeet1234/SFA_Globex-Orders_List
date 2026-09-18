@@ -1,4 +1,5 @@
 import { normalizeOrderPayments, hasAdvanceReceived } from '../../lib/order-payments.js';
+import { selectNumberOnFocus } from '../utils/numberInput';
 import React, { useState, useEffect } from 'react';
 import { 
   X, 
@@ -297,7 +298,7 @@ const AmendOrderForm: React.FC<AmendOrderFormProps> = ({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} onFocusCapture={selectNumberOnFocus} className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
 
           {/* Section 1: Buyer Company & Order Identifier */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

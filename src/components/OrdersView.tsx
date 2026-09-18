@@ -1,5 +1,5 @@
 import { hasAdvanceReceived, receivedPaymentUSD } from '../../lib/order-payments.js';
-import { getLotStage, isLotAdvanceStage } from '../../lib/order-lots.js';
+import { getLotStage, getLotTotal, isLotAdvanceStage } from '../../lib/order-lots.js';
 import React, { useState, useMemo } from 'react';
 import { 
   Search, 
@@ -593,7 +593,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           <div className="text-[10px] font-bold uppercase tracking-wider flex items-center justify-between">
                             <span>Balance Due</span>
                             <span className="text-[9px] font-bold px-1 rounded bg-white/70">
-                              {hasAdvanceReceived(order) ? 'Full - Advance' : 'Full Amount'}
+                              {hasLots ? 'Full - Payments' : hasAdvanceReceived(order) ? 'Full - Advance' : 'Full Amount'}
                             </span>
                           </div>
                           <div className={`text-sm font-black mt-0.5 ${
@@ -632,8 +632,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                           const lotStageInfo = LOT_ORDER_STAGES.find((stage) => stage.id === lotStage) || LOT_ORDER_STAGES[0];
                           const lotAdvanceStageReached = isLotAdvanceStage(lotStage);
                           const nextLotStageInfo = LOT_ORDER_STAGES[lotStep] || null;
-                          const lotTotalAED = Math.round(lot.quantity * order.unitPriceAED);
-                          const lotTotalUSD = Math.round(lot.quantity * order.unitPriceUSD);
+                          const { aed: lotTotalAED, usd: lotTotalUSD } = getLotTotal(lot);
                           const displayedAdvanceAED = lotAdvanceStageReached ? lot.advance_paid_aed ?? lot.advance_aed : lot.advance_aed;
                           const displayedAdvanceUSD = lotAdvanceStageReached ? lot.advance_paid_usd ?? lot.advance_usd : lot.advance_usd;
                           const inputKey = lotInputKey(order.id, lot.lot_number);
@@ -697,7 +696,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                                   <div className="mt-0.5 text-[9px] text-slate-400">{lot.quantity.toLocaleString()} MT × {formatAED(order.unitPriceAED)}</div>
                                 </div>
                                 <div>
-                                  <div className="font-bold uppercase tracking-wide text-slate-400">Advance</div>
+                                  <div className="font-bold uppercase tracking-wide text-slate-400">{lot.status === 'fully_paid' ? 'Payments received' : lotAdvanceStageReached ? 'Advance paid' : 'Advance'}</div>
                                   <div className="mt-0.5 font-bold text-emerald-700">{formatAED(displayedAdvanceAED)}</div>
                                   <div className="font-mono text-[9px] text-slate-500">{formatUSD(displayedAdvanceUSD)}</div>
                                 </div>
@@ -920,7 +919,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                       <td className="py-3.5 px-4 font-semibold text-emerald-600">
                         {formatAED(recordedAdvanceAED)}
                         <div className="text-[10px] text-slate-500">{formatUSD(recordedAdvanceUSD)}</div>
-                        <div className="text-[10px]">{completedLots.length > 0 ? completedLots.map((lot) => `Lot ${lot.lot_number} payment received`).join(' · ') : order.lots?.length ? 'Advance paid' : 'Advance'}</div>
+                        <div className="text-[10px]">{completedLots.length > 0 ? completedLots.map((lot) => `Lot ${lot.lot_number} payment received`).join(' · ') : order.lots?.length ? (hasAdvanceReceived(order) ? 'Advance paid' : 'Advance pending') : 'Advance'}</div>
                       </td>
                       <td className="py-3.5 px-4 font-extrabold">
                         <span className={order.balancePaymentUSD > 0 ? 'text-amber-700' : 'text-emerald-700'}>

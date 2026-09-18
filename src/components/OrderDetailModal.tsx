@@ -1,4 +1,4 @@
-import { hasAdvanceReceived } from '../../lib/order-payments.js';
+import { hasAdvanceReceived, receivedPaymentUSD, receivedPaymentAED } from '../../lib/order-payments.js';
 import { applyLotAdvancePayment, getLotStage, getLotTotal } from '../../lib/order-lots.js';
 import React, { useState } from 'react';
 import { 
@@ -200,6 +200,9 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
 
   const isWaitingPI = order.isWaitingForBuyerPI || order.currentStage === 'pi_issued';
   const completedLots = order.lots?.filter((lot) => lot.status === 'fully_paid') || [];
+  const hasLots = Boolean(order.lots?.length);
+  const displayedPaymentUSD = hasLots ? receivedPaymentUSD(order) : order.advancePaymentUSD;
+  const displayedPaymentAED = hasLots ? receivedPaymentAED(order) : order.advancePaymentAED;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
@@ -602,21 +605,21 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 {/* Advance Received */}
                 <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200">
                   <div className="flex items-center justify-between text-xs font-bold text-emerald-800 uppercase tracking-wider">
-                            <span>Advance</span>
+                    <span>{hasLots ? 'Lot payments received' : 'Advance'}</span>
                     <span className="bg-emerald-200/60 px-2 py-0.5 rounded-full text-emerald-900 text-[10px]">
                       {order.totalAmountUSD > 0 
-                        ? Math.round((order.advancePaymentUSD / order.totalAmountUSD) * 100) 
+                        ? Math.round((displayedPaymentUSD / order.totalAmountUSD) * 100)
                         : 0}% {hasAdvanceReceived(order) ? 'Received' : 'Planned'}
                     </span>
                   </div>
                   <div className="text-2xl font-black text-emerald-700 mt-1">
-                    {formatAED(order.advancePaymentAED)}
+                    {formatAED(displayedPaymentAED)}
                   </div>
                   <div className="text-xs font-semibold text-emerald-800/80 mt-0.5 font-mono">
-                    {formatUSD(order.advancePaymentUSD)}
+                    {formatUSD(displayedPaymentUSD)}
                   </div>
                   <div className="text-[11px] text-emerald-700 mt-2">
-                    Credited into trade escrow account
+                    {hasLots ? 'Sum of confirmed lot payments' : 'Credited into trade escrow account'}
                   </div>
                 </div>
 
@@ -629,7 +632,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                   <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider">
                     <span>Balance Due</span>
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/80 font-mono">
-                      {hasAdvanceReceived(order) ? 'Full - Advance' : 'Full Amount'}
+                      {hasLots ? 'Full - Payments' : hasAdvanceReceived(order) ? 'Full - Advance' : 'Full Amount'}
                     </span>
                   </div>
                   <div className={`text-2xl font-black mt-1 ${
@@ -663,7 +666,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                           <th className="px-3 py-2 font-bold">Lot</th>
                           <th className="px-3 py-2 font-bold">Quantity</th>
                           <th className="px-3 py-2 font-bold">Lot total</th>
-                          <th className="px-3 py-2 font-bold">Advance</th>
+                          <th className="px-3 py-2 font-bold">Payments received</th>
                           <th className="px-3 py-2 font-bold">Final amount</th>
                           <th className="px-3 py-2 font-bold">Status</th>
                         </tr>
@@ -680,8 +683,9 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                               <div className="font-mono text-[10px] text-slate-500">{formatUSD(lotTotal.usd)}</div>
                             </td>
                             <td className="px-3 py-2.5">
-                              <div className="font-bold text-emerald-700">{formatAED(lot.advance_aed)}</div>
-                              <div className="font-mono text-[10px] text-slate-500">{formatUSD(lot.advance_usd)}</div>
+                              <div className="font-bold text-emerald-700">{formatAED(lotTotal.aed - lot.balance_aed)}</div>
+                              <div className="font-mono text-[10px] text-slate-500">{formatUSD(lotTotal.usd - lot.balance_usd)}</div>
+                              <div className="mt-1 text-[10px] text-slate-500">Agreed advance: {formatAED(lot.advance_aed)}</div>
                             </td>
                             <td className="px-3 py-2.5">
                               <div className="font-bold text-amber-800">{formatAED(lot.balance_aed)}</div>

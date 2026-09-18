@@ -1,4 +1,5 @@
 import { hasAdvanceReceived } from '../../lib/order-payments.js';
+import { selectNumberOnFocus } from '../utils/numberInput';
 import React, { useState, useEffect } from "react";
 import {
   X,
@@ -303,6 +304,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
         {/* Modal Form */}
         <form
           onSubmit={handleSubmit}
+          onFocusCapture={selectNumberOnFocus}
           className="p-6 space-y-6 max-h-[75vh] overflow-y-auto"
         >
           {/* Section 1: Order Identifier & Buyer Company */}

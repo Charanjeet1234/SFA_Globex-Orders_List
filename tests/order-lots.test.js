@@ -4,6 +4,7 @@ import {
   applyLotAdvancePayment,
   createLots,
   distributeLotQuantities,
+  getLotTotal,
   isLotSplitEligible,
   isValidLotDistribution,
   normalizeLots,
@@ -13,6 +14,99 @@ import {
 import { normalizeOrderPayments } from '../lib/order-payments.js';
 
 const pricing = { unitPriceUSD: 1000, unitPriceAED: 3673, exchangeRate: 3.6725 };
+
+// Reproduce SFA-2026-961: the saved full-payment stages previously left only
+// the old advance recorded, transferring the missing payments to Lot 2.
+function completedOrderFixture(secondStage = 'bl_surrender') {
+  return {
+    orderNumber: 'SFA-2026-961',
+    quantity: 504,
+    unitPriceUSD: 1175,
+    unitPriceAED: 4318,
+    exchangeRateUsdToAed: 3.6745,
+    totalAmountUSD: 592200,
+    totalAmountAED: 2176272,
+    balancePaymentUSD: 444024,
+    balancePaymentAED: 1631800,
+    currentStage: 'bl_surrender',
+    lots: [1, 2].map((lot_number) => ({
+      lot_number,
+      quantity: 252,
+      advance_usd: 74088,
+      advance_aed: 272236,
+      advance_paid_usd: 74088,
+      advance_paid_aed: 272236,
+      current_stage: lot_number === 1 ? 'bl_surrender' : secondStage,
+      balance_usd: lot_number === 1 ? 0 : 444024,
+      balance_aed: lot_number === 1 ? 0 : 1631800,
+      status: lot_number === 1 ? 'fully_paid' : 'advance_paid',
+    })),
+  };
+}
+
+test('completed lots clear the SFA-2026-961 balance and remain settled after reload', () => {
+  const result = normalizeOrderPayments(completedOrderFixture());
+  assert.equal(result.balancePaymentUSD, 0);
+  assert.equal(result.balancePaymentAED, 0);
+  assert.equal(result.isFullPaymentReceived, true);
+  for (const lot of result.lots) {
+    assert.equal(lot.status, 'fully_paid');
+    assert.equal(lot.balance_usd, 0);
+    assert.equal(lot.balance_aed, 0);
+    assert.equal(lot.advance_paid_usd, 296100);
+    assert.equal(lot.advance_paid_aed, 1088136);
+    assert.deepEqual(getLotTotal(lot), { usd: 296100, aed: 1088136 });
+  }
+  assert.deepEqual(normalizeOrderPayments(JSON.parse(JSON.stringify(result))), result);
+});
+
+test('settling Lot 1 leaves only Lot 2 total minus its received advance due', () => {
+  const result = normalizeOrderPayments(completedOrderFixture('advance_received'));
+  assert.equal(result.lots[0].balance_aed, 0);
+  assert.equal(result.lots[1].balance_usd, 296100 - 74088);
+  assert.equal(result.lots[1].balance_aed, 1088136 - 272236);
+  assert.equal(result.balancePaymentUSD, 222012);
+  assert.equal(result.balancePaymentAED, 815900);
+  assert.equal(result.isFullPaymentReceived, false);
+  assert.equal(result.isCompleted, false);
+  const summary = summarizeLots(result.lots);
+  assert.equal(summary.paidAdvanceUSD + summary.balanceUSD, result.totalAmountUSD);
+  assert.equal(summary.paidAdvanceAED + summary.balanceAED, result.totalAmountAED);
+  assert.deepEqual(normalizeOrderPayments(JSON.parse(JSON.stringify(result))), result);
+});
+
+test('rounding never moves a completed lot payment onto a sibling balance', () => {
+  const decimalPricing = { unitPriceUSD: 1175, unitPriceAED: 4318, exchangeRate: 3.6745 };
+  const lots = createLots({ quantity: 504.01, lotCount: 3, ...decimalPricing });
+  const before = normalizeLots(lots, decimalPricing);
+  const after = normalizeLots(lots.map((lot, index) => index === 0
+    ? { ...lot, advance_paid_usd: lot.advance_usd, current_stage: 'got_full_money' }
+    : lot), decimalPricing);
+  assert.deepEqual(after.slice(1), before.slice(1));
+  assert.equal(after[0].balance_aed, 0);
+  const fullyPaid = normalizeLots(after.map((lot) => ({ ...lot, current_stage: 'got_full_money' })), decimalPricing);
+  const summary = summarizeLots(fullyPaid);
+  assert.equal(summary.balanceUSD, 0);
+  assert.equal(summary.balanceAED, 0);
+  assert.equal(summary.paidAdvanceUSD, Math.round(504.01 * 1175));
+  assert.equal(summary.paidAdvanceAED, Math.round(504.01 * 4318));
+  assert.deepEqual(normalizeLots(fullyPaid, decimalPricing), fullyPaid);
+});
+
+test('receiving the full lot amount settles both currencies without moving its shipment stage', () => {
+  const fixture = completedOrderFixture('advance_received');
+  const paid = recordLotAdvance(fixture.lots[1], 296100, {
+    unitPriceUSD: 1175, unitPriceAED: 4318, exchangeRate: 3.6745,
+  });
+  assert.equal(paid.current_stage, 'advance_received');
+  assert.equal(paid.status, 'fully_paid');
+  assert.equal(paid.balance_usd, 0);
+  assert.equal(paid.balance_aed, 0);
+  const saved = normalizeOrderPayments({ ...fixture, lots: [fixture.lots[0], paid] });
+  assert.equal(saved.balancePaymentAED, 0);
+  assert.equal(saved.isCompleted, false);
+  assert.deepEqual(normalizeOrderPayments(saved), saved);
+});
 
 test('lot splitting is restricted to orders over 224 MT', () => {
   assert.equal(isLotSplitEligible(224, 'MT'), false);
@@ -51,8 +145,8 @@ test('lot financials calculate balances and statuses in USD and AED', () => {
   assert.equal(normalized[0].status, 'fully_paid');
   assert.equal(normalized[1].status, 'advance');
   assert.equal(normalized[2].status, 'advance_paid');
-  assert.equal(summary.advanceUSD + summary.balanceUSD, 250000);
-  assert.equal(summary.advanceAED + summary.balanceAED, 918250);
+  assert.equal(summary.paidAdvanceUSD + summary.balanceUSD, 250000);
+  assert.equal(summary.paidAdvanceAED + summary.balanceAED, 918250);
 });
 
 test('a configured advance leaves the full lot amount due until it is received', () => {
